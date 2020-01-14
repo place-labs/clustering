@@ -1,0 +1,19 @@
+name: poc-core-cluster
+version: 0.1.0
+crystal: 0.32.0
+
+dependencies:
+  etcd:
+    github: aca-labs/crystal-etcd
+  hound-dog:
+    github: aca-labs/hound-dog
+  redis:
+    github: stefanwille/crystal-redis
+
+targets:
+  poc-core-cluster:
+    main: src/poc-core-cluster.cr
+
+authors:
+  - Caspian Baska <caspianbaska@gmail.com>
+license: MIT

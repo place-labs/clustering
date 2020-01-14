@@ -1,0 +1,46 @@
+version: 1.0
+shards:
+  bisect:
+    github: spider-gazelle/bisect
+    version: 1.2.0
+
+  cron_parser:
+    github: kostya/cron_parser
+    version: 0.3.0
+
+  etcd:
+    github: aca-labs/crystal-etcd
+    commit: 25a02e60f32a8de6609cee4dbbec07698878f102
+
+  habitat:
+    github: luckyframework/habitat
+    version: 0.4.3
+
+  hound-dog:
+    github: aca-labs/hound-dog
+    commit: 080cb2eb7dfd70438ac8b231ba46beb184e79298
+
+  murmur3:
+    github: aca-labs/murmur3
+    commit: 7cbe25c0ca8d052c9d98c377c824dcb0e038c790
+
+  pool:
+    github: ysbaddaden/pool
+    version: 0.2.3
+
+  redis:
+    github: stefanwille/crystal-redis
+    version: 2.5.3
+
+  rendezvous-hash:
+    github: caspiano/rendezvous-hash
+    version: 0.2.2
+
+  tasker:
+    github: spider-gazelle/tasker
+    version: 1.2.2
+
+  tokenizer:
+    github: spider-gazelle/tokenizer
+    version: 1.1.0
+
