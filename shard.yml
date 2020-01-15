@@ -5,6 +5,7 @@ crystal: 0.32.0
 dependencies:
   etcd:
     github: aca-labs/crystal-etcd
+    branch: master
   hound-dog:
     github: aca-labs/hound-dog
   redis:

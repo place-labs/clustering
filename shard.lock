@@ -10,7 +10,7 @@ shards:
 
   etcd:
     github: aca-labs/crystal-etcd
-    commit: 25a02e60f32a8de6609cee4dbbec07698878f102
+    commit: 34265068acc13c65ff22f862ab88ae666a8655ab
 
   habitat:
     github: luckyframework/habitat
