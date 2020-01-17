@@ -1,4 +1,5 @@
-name: poc-core-cluster
+name: poc
+
 version: 0.1.0
 crystal: 0.32.0
 
@@ -12,9 +13,10 @@ dependencies:
     github: stefanwille/crystal-redis
 
 targets:
-  poc-core-cluster:
-    main: src/poc-core-cluster.cr
+  poc:
+    main: src/poc.cr
 
 authors:
   - Caspian Baska <caspianbaska@gmail.com>
+
 license: MIT
