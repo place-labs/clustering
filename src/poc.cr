@@ -7,6 +7,7 @@ require "./coordination"
 class Node
   include Coordination
   getter discovery : HoundDog::Discovery
+  getter name : String
 
   def initialize(@ip : String, @port : Int32, @name : String = "node-#{UUID.random}")
     @discovery = HoundDog::Discovery.new(service: "poc", ip: @ip, port: @port)

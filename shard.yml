@@ -9,6 +9,7 @@ dependencies:
     branch: master
   hound-dog:
     github: aca-labs/hound-dog
+    branch: master
   redis:
     github: stefanwille/crystal-redis
 

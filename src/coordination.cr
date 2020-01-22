@@ -17,10 +17,8 @@ module Coordination
   abstract def redis_pool : Redis::PooledClient
 
   getter? leader : Bool = false
-  getter? ready : Bool = false
 
   getter cluster_version : UInt64 = 0_u64
-  getter ready_channel = Channel(Bool).new
 
   # Node Metadata
   getter ip : String
@@ -43,15 +41,16 @@ module Coordination
       end
     }
     @version_watcher = etcd.watch.watch(@@cluster_version_key, filters: [Etcd::Watch::Watcher::WatchFilter::NODELETE]) { |v|
-      set_ready(false)
-      cluster_version_update
+      version = v.first?.try(&.kv.value.try(&.to_u64?)) || 0_u64
+      set_ready(version)
+      cluster_version_update(version)
     }
   end
 
-  class_getter election_key : String = "leader"
-  class_getter readiness_key : String = "node_version"
-  class_getter cluster_version_key : String = "cluster_version"
-  class_getter version_channel_name : String = "cluster_version"
+   @@election_key : String = "leader"
+   @@readiness_key : String = "node_version"
+   @@cluster_version_key : String = "cluster_version"
+   @@version_channel_name : String = "cluster_version"
 
   def service
     discovery.service
@@ -59,9 +58,7 @@ module Coordination
 
   # TODO: Modify to hangle the case of a cluster merge
   private getter election_watcher : Etcd::Watch::Watcher
-
   private getter readiness_watcher : Etcd::Watch::Watcher
-
   private getter version_watcher : Etcd::Watch::Watcher
 
   def start
@@ -84,7 +81,7 @@ module Coordination
   # Handle a node joining/leaving the cluster
   def cluster_change
     # TODO: Logic to put off stabilisation if cluster is initializing
-    @cluster_version = increment_version if is_leader?
+    @cluster_version = increment_version if leader?
     # Update the cluster version if leader
     # Queue the cluster version
   end
@@ -108,7 +105,7 @@ module Coordination
   def consume_stabilization_events
     loop do
       nodes, version = rebalance_channel.receive
-      next if version < @current_version
+      next if version < cluster_version
       _stabilize(version, nodes)
     end
   end
@@ -119,10 +116,10 @@ module Coordination
   end
 
   private def set_ready(version : UInt64)
-    raise "Node must be registered before participating in cluster" unless discovery.registered
+    raise "Node must be registered before participating in cluster" unless discovery.registered?
 
     # Set the ready key for this node in etcd
-    etcd_client.kv.put(node_ready_key, version, discovery.lease_id.as(Int64))
+    etcd_client.kv.put(@@readiness_key, version, discovery.lease_id.as(Int64))
   end
 
   # Election
@@ -164,7 +161,7 @@ module Coordination
       end
       ready
     end
-    readiness.all? { |_, v| v == @current_version }
+    readiness.all? { |_, v| v == cluster_version }
   end
 
   # Helpers
@@ -175,7 +172,7 @@ module Coordination
   end
 
   private def node_ready_key
-    "#{readiness_key}/#{discovery_value}"
+    "#{@@readiness_key}/#{discovery_value}"
   end
 
   private def discovery_value
@@ -186,20 +183,15 @@ module Coordination
     etcd = etcd_client
 
     # first, set key to 1 if not present
-    if etcd.kv.put_not_exists(key, 1_u64)
+    if etcd.kv.put_not_exists(@@cluster_version_key, 1_u64)
       1_u64
     else
-      value = etcd.kv.get(key).try(&.to_u64) || 1_u64
-      until etcd.kv.compare_and_swap(key, value + 1_u64, value)
-        value = etcd.kv.get(key).try(&.to_u64) || 1_u64
+      value = etcd.kv.get(@@cluster_version_key).try(&.to_u64) || 1_u64
+      until etcd.kv.compare_and_swap(@@cluster_version_key, value + 1_u64, value)
+        value = etcd.kv.get(@@cluster_version_key).try(&.to_u64) || 1_u64
       end
       value + 1_u64
     end
-  end
-
-  # Necessary to avoid use of instance variables at the top level
-  def set_ready(ready)
-    @ready = ready
   end
 
   def set_version(version)
