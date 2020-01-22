@@ -10,7 +10,7 @@ shards:
 
   etcd:
     github: aca-labs/crystal-etcd
-    commit: 34265068acc13c65ff22f862ab88ae666a8655ab
+    commit: 6f483ebd6a587909dfcaf133637e6d07a5dbd655
 
   habitat:
     github: luckyframework/habitat
@@ -18,7 +18,7 @@ shards:
 
   hound-dog:
     github: aca-labs/hound-dog
-    commit: 080cb2eb7dfd70438ac8b231ba46beb184e79298
+    version: 1.1.1
 
   murmur3:
     github: aca-labs/murmur3

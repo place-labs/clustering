@@ -10,6 +10,7 @@ class Node
 
   def initialize(@ip : String, @port : Int32, @name : String = "node-#{UUID.random}")
     @discovery = HoundDog::Discovery.new(service: "poc", ip: @ip, port: @port)
+    super()
   end
 
   def etcd_client
@@ -19,7 +20,7 @@ class Node
   getter redis_pool = Redis::PooledClient.new
 
   def redis_client
-    Redis::Client.new
+    Redis.new(url: ENV["REDIS_URL"]?)
   end
 
   def stabilize(nodes)

@@ -32,6 +32,22 @@ module Coordination
 
   abstract def discovery : HoundDog::Discovery
 
+  def initialize
+    etcd = etcd_client
+    @election_watcher = etcd.watch.watch(@@election_key, filters: [Etcd::Watch::Watcher::WatchFilter::NOPUT]) {
+      election
+    }
+    @readiness_watcher = etcd.watch.watch_prefix(@@readiness_key) {
+      if cluster_consistent? && leader?
+        redis_pool.publish(@@version_channel_name, cluster_version)
+      end
+    }
+    @version_watcher = etcd.watch.watch(@@cluster_version_key, filters: [Etcd::Watch::Watcher::WatchFilter::NODELETE]) { |v|
+      set_ready(false)
+      cluster_version_update
+    }
+  end
+
   class_getter election_key : String = "leader"
   class_getter readiness_key : String = "node_version"
   class_getter cluster_version_key : String = "cluster_version"
@@ -41,28 +57,12 @@ module Coordination
     discovery.service
   end
 
-  private getter cluster_readiness_subscription : Redis::Subscription = redis_client.subscribe(version_channel_name) { |on|
-    on.message do |_, new_version|
-      set_ready(cluster_version == new_version)
-      set_version(new_version.to_u64)
-    end
-  }
-
   # TODO: Modify to hangle the case of a cluster merge
-  private getter election_watcher : Etcd::Watch::Watcher = etcd_client.watch.watch(election_key, filters: [Etcd::Watcher::WatchFilter::NOPUT]) {
-    election
-  }
+  private getter election_watcher : Etcd::Watch::Watcher
 
-  private getter readiness_watcher : Etcd::Watch::Watcher = etcd_client.watch.watch_prefix(readiness_key) {
-    if cluster_consistent? && leader?
-      redis_pool.publish(version_channel_name, cluster_version)
-    end
-  }
+  private getter readiness_watcher : Etcd::Watch::Watcher
 
-  private getter version_watcher : Etcd::Watch::Watcher = etcd_client.watch.watch(cluster_version_key, filters: [Etcd::Watcher::WatchFilter::NODELETE]) { |v|
-    set_ready(false)
-    cluster_version_update
-  }
+  private getter version_watcher : Etcd::Watch::Watcher
 
   def start
     discovery.register do
@@ -78,7 +78,7 @@ module Coordination
   end
 
   def leader_node
-    etcd_client.get(election_key).try(&->HoundDog::Service.node(String))
+    etcd_client.get(@@election_key).try(&->HoundDog::Service.node(String))
   end
 
   # Handle a node joining/leaving the cluster
@@ -131,21 +131,20 @@ module Coordination
   # Try to acquire the leader role
   #
   private def election
-    unless discovery.registered
-      raise "Node must be registered before participating in election"
-    end
+    raise "Node must be registered before participating in election" unless discovery.registered?
+
     etcd = etcd_client
-    lease_id = discovery.lease_id.as(Int64)
+    lease_id = discovery.lease_id
 
     # Determine leader status
-    @leader = if (kv = etcd.kv.range(election_key).kv.first?)
+    @leader = if (kv = etcd.kv.range(@@election_key).kvs.first?)
                 # Check if it is the same as the current node
                 node = HoundDog::Service.node(kv.value.as(String))
 
                 node[:ip] == ip && node[:port] == port && lease_id == kv.lease
               else
                 # Attempt to set self as if a leader is not already present
-                etcd.put_not_exists(election_key, lease_id)
+                etcd.kv.put_not_exists(@@election_key, lease_id)
               end
   end
 
@@ -159,11 +158,13 @@ module Coordination
 
   def cluster_consistent?
     # Get values under the "readiness key"
-    @readiness = etcd.kv.prefix_range(readiness_key).kvs.reduce({} of String => String) do |ready, kv|
-      ready[strip_namespace(kv.key, readiness_key)] = kv.value
+    @readiness = etcd_client.kv.range_prefix(@@readiness_key).kvs.reduce({} of String => String) do |ready, kv|
+      if value = kv.value
+        ready[strip_namespace(kv.key, @@readiness_key)] = value
+      end
       ready
     end
-    readiness.all? { |_, v| v == current_version }
+    readiness.all? { |_, v| v == @current_version }
   end
 
   # Helpers
@@ -182,6 +183,8 @@ module Coordination
   end
 
   private def increment_version
+    etcd = etcd_client
+
     # first, set key to 1 if not present
     if etcd.kv.put_not_exists(key, 1_u64)
       1_u64
