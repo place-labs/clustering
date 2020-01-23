@@ -1,5 +1,4 @@
 name: poc
-
 version: 0.1.0
 crystal: 0.32.0
 
@@ -10,6 +9,9 @@ dependencies:
   hound-dog:
     github: aca-labs/hound-dog
     branch: master
+  ulid:
+    github: aca-labs/ulid
+    version: ~>0.1
   redis:
     github: stefanwille/crystal-redis
 

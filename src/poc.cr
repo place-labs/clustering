@@ -1,4 +1,5 @@
 require "etcd"
+require "logger"
 require "redis"
 require "uuid"
 
@@ -8,19 +9,26 @@ class Node
   include Coordination
   getter discovery : HoundDog::Discovery
   getter name : String
+  getter logger : Logger = Logger.new(STDOUT, level: Logger::Severity::DEBUG)
 
-  def initialize(@ip : String, @port : Int32, @name : String = "node-#{UUID.random}")
+  private getter num : Int32 = Random.rand(1..65536)
+
+  def initialize(
+    @ip : String = "fake-#{num.to_s.rjust(5, '0')}",
+    @port : Int32 = num,
+    @name : String = "node-#{num.to_s.rjust(5, '0')}"
+  )
     @discovery = HoundDog::Discovery.new(service: "poc", ip: @ip, port: @port)
     super()
   end
 
-  def etcd_client
+  def etcd_client : Etcd::Client
     Etcd.client(HoundDog.settings.etcd_host, HoundDog.settings.etcd_port)
   end
 
-  getter redis_pool = Redis::PooledClient.new
+  getter redis_pool : Redis::PooledClient = Redis::PooledClient.new
 
-  def redis_client
+  def redis_client : Redis::Client
     Redis.new(url: ENV["REDIS_URL"]?)
   end
 
@@ -31,10 +39,10 @@ class Node
   end
 end
 
-node = Node.new(ip: "fake-#{UUID.random}", port: Random.rand(1..65536)).start
+node = Node.new.start
 
 (0..100).each do
-  puts "#{node.name}: #{node.discovery.nodes}"
+  puts "#{node.name}: leader?=#{node.leader?} #nodes=#{node.discovery.nodes.size} nodes=#{node.discovery.nodes.map &.[:ip]}"
   sleep 1
 end
 
