@@ -18,7 +18,7 @@ shards:
 
   hound-dog:
     github: aca-labs/hound-dog
-    commit: 9c811ef491b6efb958b7a70069c70c070f86a81c
+    commit: 4b769c2caf873139a024517103df029594906cd0
 
   murmur3:
     github: aca-labs/murmur3
