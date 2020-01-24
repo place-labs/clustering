@@ -26,11 +26,9 @@ module Coordination
   getter ip : String
   getter port : Int32
 
-  # Only a single etcd lease is required for the node's responsibilities.
-  # - Attach discovery lease to every key.
-  # - If a node dies, all keys on the lease disappear simultaneously.
-
   abstract def discovery : HoundDog::Discovery
+
+  delegate service, to: discovery
 
   def initialize
     @election_watcher = etcd_client.watch.watch(@@election_key, filters: [Etcd::Watch::Watcher::WatchFilter::NOPUT]) { handle_election }
@@ -38,15 +36,11 @@ module Coordination
     @version_watcher = etcd_client.watch.watch(@@cluster_version_key) { |v| handle_version_change(v) }
   end
 
-  @@meta_namespace : String = "cluster"
-  @@election_key : String = "#{@@meta_namespace}/leader"
-  @@readiness_key : String = "#{@@meta_namespace}/node_version"
-  @@cluster_version_key : String = "#{@@meta_namespace}/cluster_version"
-  @@version_channel_name : String = "#{@@meta_namespace}/cluster_version"
-
-  def service
-    discovery.service
-  end
+  @@meta_namespace = "cluster"
+  @@election_key = "#{@@meta_namespace}/leader"
+  @@readiness_key = "#{@@meta_namespace}/node_version"
+  @@cluster_version_key = "#{@@meta_namespace}/cluster_version"
+  @@version_channel_name = "#{@@meta_namespace}/cluster_version"
 
   def handle_readiness_event
     if cluster_consistent? && leader?
@@ -57,15 +51,14 @@ module Coordination
   end
 
   def handle_version_change(value)
+    puts "in version change"
     version = value.first?.try(&.kv.value) || ""
-    logger.info("version=#{version} is_leader?=#{leader?} message=version change")
-    set_ready(version)
+    logger.info("v=#{version} l?=#{leader?} message=version change")
     cluster_version_update(version)
   rescue e
     logger.error("While watching cluster version #{e.inspect_with_backtrace}")
   end
 
-  # TODO: Modify to hangle the case of a cluster merge
   private getter election_watcher : Etcd::Watch::Watcher
   private getter readiness_watcher : Etcd::Watch::Watcher
   private getter version_watcher : Etcd::Watch::Watcher
@@ -74,9 +67,11 @@ module Coordination
     discovery.register do
       cluster_change
     end
-
+    Fiber.yield
     spawn(same_thread: true) { election_watcher.start }
+    Fiber.yield
     spawn(same_thread: true) { readiness_watcher.start }
+    Fiber.yield
     spawn(same_thread: true) { consume_stabilization_events }
     Fiber.yield
 
@@ -113,7 +108,7 @@ module Coordination
   def consume_stabilization_events
     loop do
       nodes, version = stabilize_channel.receive
-      next if version < cluster_version
+      next if !version.empty? && version < cluster_version
       _stabilize(version, nodes)
     end
   rescue e
@@ -154,7 +149,7 @@ module Coordination
                 # Attempt to set self as if a leader is not already present
                 etcd.kv.put_not_exists(@@election_key, HoundDog::Service.key_value({ip: ip, port: port}), lease_id)
               end
-    logger.info("is_leader?=#{leader?} leader=#{leader_node}")
+    logger.info("l?=#{leader?} l=#{leader_node}")
   rescue e
     logger.error("While participating in election #{e.inspect_with_backtrace}")
   end
@@ -198,7 +193,7 @@ module Coordination
     lease_id = discovery.lease_id.as(Int64)
 
     etcd_client.kv.put(@@cluster_version_key, version, lease_id)
-    logger.info("version=#{version} message=set version")
+    logger.info("v=#{version} message=set version")
     version
   end
 end

@@ -23,7 +23,7 @@ class Node
   end
 
   def etcd_client : Etcd::Client
-    Etcd.client(HoundDog.settings.etcd_host, HoundDog.settings.etcd_port)
+    HoundDog.etcd_client
   end
 
   getter redis_pool : Redis::PooledClient = Redis::PooledClient.new
@@ -42,7 +42,7 @@ end
 node = Node.new.start
 
 (0..100).each do
-  puts "#{node.name}: leader?=#{node.leader?} #nodes=#{node.discovery.nodes.size} nodes=#{node.discovery.nodes.map &.[:ip]}"
+  node.logger.info "#{node.name}: v=#{node.cluster_version} l?=#{node.leader?} #n=#{node.discovery.nodes.size} n=#{node.discovery.nodes.map &.[:ip]}"
   sleep 1
 end
 
