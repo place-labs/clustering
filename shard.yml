@@ -17,7 +17,7 @@ dependencies:
 
 targets:
   poc:
-    main: src/poc.cr
+    main: src/main.cr
 
 authors:
   - Caspian Baska <caspianbaska@gmail.com>

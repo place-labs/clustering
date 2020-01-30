@@ -10,9 +10,6 @@ module Coordination
   # Implement a etcd_client generator
   abstract def etcd_client : Etcd::Client
 
-  # Single redis client for a subscription
-  abstract def redis_client : Redis::Client
-
   # For shared connection queries
   abstract def redis_pool : Redis::PooledClient
 
@@ -31,9 +28,9 @@ module Coordination
   delegate service, to: discovery
 
   def initialize
-    @election_watcher = etcd_client.watch.watch(@@election_key, filters: [Etcd::Watch::Watcher::WatchFilter::NOPUT]) { handle_election }
-    @readiness_watcher = etcd_client.watch.watch_prefix(@@readiness_key) { handle_readiness_event }
-    @version_watcher = etcd_client.watch.watch(@@cluster_version_key) { |v| handle_version_change(v) }
+    @election_watcher = etcd_client.watch.watch(@@election_key, filters: [Etcd::Watch::Watcher::WatchFilter::NOPUT]) { logger.info("ELECTION EVENT"); handle_election }
+    @readiness_watcher = etcd_client.watch.watch_prefix(@@readiness_key) { logger.info("READY EVENT"); handle_readiness_event }
+    @version_watcher = etcd_client.watch.watch(@@cluster_version_key) { |v| logger.info("VERSION EVENT"); handle_version_change(v) }
   end
 
   @@meta_namespace = "cluster"
@@ -67,12 +64,19 @@ module Coordination
     discovery.register do
       cluster_change
     end
-    Fiber.yield
-    spawn(same_thread: true) { election_watcher.start }
-    Fiber.yield
-    spawn(same_thread: true) { readiness_watcher.start }
-    Fiber.yield
-    spawn(same_thread: true) { consume_stabilization_events }
+
+    spawn(same_thread: true) do
+      logger.info "starting election watcher"
+      election_watcher.start
+    end
+    spawn(same_thread: true) do
+      logger.info "starting readiness watcher"
+      readiness_watcher.start
+    end
+    spawn(same_thread: true) do
+      logger.info "consuming stabilization events"
+      consume_stabilization_events
+    end
     Fiber.yield
 
     self
