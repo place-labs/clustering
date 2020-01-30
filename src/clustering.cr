@@ -3,7 +3,7 @@ require "hound-dog"
 require "redis"
 require "ulid"
 
-module Coordination
+module Clustering
   # Performed to align nodes in the cluster
   abstract def stabilize(nodes : Array(HoundDog::Node))
 

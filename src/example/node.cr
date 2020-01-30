@@ -3,10 +3,10 @@ require "logger"
 require "redis"
 require "uuid"
 
-require "../coordination"
+require "../clustering"
 
 class Node
-  include Coordination
+  include Clustering
   getter discovery : HoundDog::Discovery
   getter name : String
   getter logger : Logger = Logger.new(STDOUT, level: Logger::Severity::DEBUG)
