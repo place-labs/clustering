@@ -3,7 +3,7 @@ require "logger"
 require "redis"
 require "uuid"
 
-require "./coordination"
+require "../coordination"
 
 class Node
   include Coordination

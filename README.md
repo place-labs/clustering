@@ -1,11 +1,13 @@
-# Core Clustering PoC
+# Clustering
 
-`$ shards build`
+Running `$ shards build` will create a simple proof of concept app.
+`src/coordination.cr` defines an abstract module if you wish to include a clustering component to your class.
+Implement `stabilize(nodes : Array(NamedTuple(ip: String, port: Int32)))` with your required cluster stabilization logic.
 
 ## Implementation
 
 A single etcd lease is granted per node so if a node drops out of the cluster,
-all associated key/values will expire from the cluster
+all associated key/values will expire from the cluster.
 
 ### Watchfeeds
 

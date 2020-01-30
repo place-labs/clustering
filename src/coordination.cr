@@ -28,29 +28,50 @@ module Coordination
   delegate service, to: discovery
 
   def initialize
-    @election_watcher = etcd_client.watch.watch(@@election_key, filters: [Etcd::Watch::Watcher::WatchFilter::NOPUT]) { logger.info("ELECTION EVENT"); handle_election }
-    @readiness_watcher = etcd_client.watch.watch_prefix(@@readiness_key) { logger.info("READY EVENT"); handle_readiness_event }
-    @version_watcher = etcd_client.watch.watch(@@cluster_version_key) { |v| logger.info("VERSION EVENT"); handle_version_change(v) }
+    @election_watcher = etcd_client.watch.watch(@@election_key, filters: [Etcd::Watch::Watcher::WatchFilter::NOPUT]) do |e|
+      logger.debug("etcd_event=election event=#{e.inspect}")
+      handle_election
+    end
+
+    @readiness_watcher = etcd_client.watch.watch_prefix(@@readiness_key) do |e|
+      logger.debug("etcd_event=ready event=#{e.inspect}")
+      handle_readiness_event
+    end
+
+    @version_watcher = etcd_client.watch.watch(@@cluster_version_key) do |e|
+      logger.debug("etcd_event=version event=#{e.inspect}")
+      handle_version_change(e)
+    end
   end
 
   @@meta_namespace = "cluster"
   @@election_key = "#{@@meta_namespace}/leader"
   @@readiness_key = "#{@@meta_namespace}/node_version"
   @@cluster_version_key = "#{@@meta_namespace}/cluster_version"
-  @@version_channel_name = "#{@@meta_namespace}/cluster_version"
+  @@redis_version_channel = "#{@@meta_namespace}/cluster_version"
+
+  class_getter meta_namespace : String
+  class_getter election_key : String
+  class_getter readiness_key : String
+  class_getter cluster_version_key : String
+  class_getter redis_version_channel : String
 
   def handle_readiness_event
-    if cluster_consistent? && leader?
-      redis_pool.publish(@@version_channel_name, cluster_version)
+    # Only publish ready version if folowing conditions are met...
+    # - node is the leader
+    # - cluster's version state is consistent
+    # - consistent state has not already been confirmed
+    if leader? && cluster_consistent? && previous_ready_states != ready_states
+      @previous_ready_states = @ready_states.dup
+      redis_pool.publish(@@redis_version_channel, cluster_version)
     end
   rescue e
     logger.error("While handling readiness event #{e.inspect_with_backtrace}")
   end
 
   def handle_version_change(value)
-    puts "in version change"
     version = value.first?.try(&.kv.value) || ""
-    logger.info("v=#{version} l?=#{leader?} message=version change")
+    logger.debug("v=#{version} l?=#{leader?} message=version change")
     cluster_version_update(version)
   rescue e
     logger.error("While watching cluster version #{e.inspect_with_backtrace}")
@@ -66,18 +87,25 @@ module Coordination
     end
 
     spawn(same_thread: true) do
-      logger.info "starting election watcher"
       election_watcher.start
     end
+
     spawn(same_thread: true) do
-      logger.info "starting readiness watcher"
+      version_watcher.start
+    end
+
+    spawn(same_thread: true) do
       readiness_watcher.start
     end
+
     spawn(same_thread: true) do
-      logger.info "consuming stabilization events"
       consume_stabilization_events
     end
+
     Fiber.yield
+
+    # Attempt to grab the leadership on start up
+    handle_election
 
     self
   end
@@ -129,7 +157,7 @@ module Coordination
 
     @cluster_version = version
     # Set the ready key for this node in etcd
-    etcd_client.kv.put(@@readiness_key, version, discovery.lease_id.as(Int64))
+    etcd_client.kv.put(node_ready_key, version, discovery.lease_id.as(Int64))
   end
 
   # Election
@@ -153,7 +181,8 @@ module Coordination
                 # Attempt to set self as if a leader is not already present
                 etcd.kv.put_not_exists(@@election_key, HoundDog::Service.key_value({ip: ip, port: port}), lease_id)
               end
-    logger.info("l?=#{leader?} l=#{leader_node}")
+    logger.info("leader?=#{leader?} leader=#{leader_node}")
+    update_version if leader?
   rescue e
     logger.error("While participating in election #{e.inspect_with_backtrace}")
   end
@@ -163,18 +192,22 @@ module Coordination
 
   # Whenever there's an event under the readiness namespace, the node constructs a readiness hash
   # Once all the nodes are at the same version, leader fires the 'cluster_ready' event in redis
-  #                        Node   => Cluster Version
-  getter readiness = {} of String => String
+  #                           Node   => Cluster Version
+  getter ready_states = {} of String => String
+  getter previous_ready_states = {} of String => String
+
+  # check the previous readiness hash
+  # is it the same, then it is consistent but don't publish
 
   def cluster_consistent?
     # Get values under the "readiness key"
-    @readiness = etcd_client.kv.range_prefix(@@readiness_key).kvs.reduce({} of String => String) do |ready, kv|
+    @ready_states = etcd_client.kv.range_prefix(@@readiness_key).kvs.reduce({} of String => String) do |ready, kv|
       if value = kv.value
         ready[strip_namespace(kv.key, @@readiness_key)] = value
       end
       ready
     end
-    readiness.all? { |_, v| v == cluster_version }
+    ready_states.all? { |_, v| v == cluster_version }
   end
 
   # Helpers

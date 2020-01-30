@@ -1,3 +1,3 @@
 require "spec"
-require "../src/node"
+require "../src/example/node"
 require "../src/coordination"

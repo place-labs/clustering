@@ -1,5 +1,9 @@
 version: 1.0
 shards:
+  ameba:
+    github: crystal-ameba/ameba
+    version: 0.11.0
+
   bisect:
     github: spider-gazelle/bisect
     version: 1.2.0
@@ -10,7 +14,7 @@ shards:
 
   etcd:
     github: aca-labs/crystal-etcd
-    commit: 985c76878617ad0c9b659f9c73f1ce4a3d48a8db
+    version: 0.2.4
 
   habitat:
     github: luckyframework/habitat
