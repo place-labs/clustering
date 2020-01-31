@@ -29,21 +29,21 @@ describe Clustering do
     versions << test_node_1.cluster_version
 
     test_node_2 = Test.new
-    test_node_2.logger.level = :error
+    test_node_2.logger.level = Logger::Severity::ERROR
     test_node_2.start
     sleep 0.1
     test_node_2.leader?.should be_false
     versions << test_node_2.cluster_version
 
     test_node_3 = Test.new
-    test_node_3.logger.level = :error
+    test_node_3.logger.level = Logger::Severity::ERROR
     test_node_3.start
     sleep 0.1
     test_node_3.leader?.should be_false
     versions << test_node_3.cluster_version
 
     test_node_4 = Test.new
-    test_node_4.logger.level = :error
+    test_node_4.logger.level = Logger::Severity::ERROR
     test_node_4.start
     sleep 0.1
     test_node_4.leader?.should be_false

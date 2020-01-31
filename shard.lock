@@ -1,5 +1,9 @@
 version: 1.0
 shards:
+  action-controller:
+    github: spider-gazelle/action-controller
+    version: 2.3.2
+
   ameba:
     github: crystal-ameba/ameba
     version: 0.11.0
@@ -12,6 +16,10 @@ shards:
     github: kostya/cron_parser
     version: 0.3.0
 
+  delimiter_tree:
+    github: drujensen/delimiter_tree
+    version: 0.1.4
+
   etcd:
     github: aca-labs/crystal-etcd
     version: 0.2.4
@@ -23,6 +31,10 @@ shards:
   hound-dog:
     github: aca-labs/hound-dog
     commit: 4b769c2caf873139a024517103df029594906cd0
+
+  kilt:
+    github: jeromegn/kilt
+    version: 0.6.0
 
   murmur3:
     github: aca-labs/murmur3

@@ -1,3 +1,4 @@
+require "action-controller/logger"
 require "etcd"
 require "logger"
 require "redis"
@@ -7,11 +8,16 @@ require "../clustering"
 
 class Node
   include Clustering
-  getter discovery : HoundDog::Discovery
   getter name : String
-  getter logger : Logger = Logger.new(STDOUT, level: Logger::Severity::DEBUG)
-
   @num : Int32 = Random.rand(1..65536)
+
+  getter logger : Logger = Logger.new(STDOUT, level: Logger::Severity::DEBUG)
+  getter discovery : HoundDog::Discovery
+  getter redis : Redis::PooledClient = Redis::PooledClient.new
+
+  def etcd_client : Etcd::Client
+    HoundDog.etcd_client
+  end
 
   def initialize(
     ip : String? = nil,
@@ -26,15 +32,9 @@ class Node
     super()
   end
 
-  def etcd_client : Etcd::Client
-    HoundDog.etcd_client
-  end
-
-  getter redis_pool : Redis::PooledClient = Redis::PooledClient.new
-
   def stabilize(nodes)
-    puts "#{name}: started stabilizing, i have #{nodes}"
-    sleep Random.rand(0..5)
-    puts "#{name}: stopped stabilizing"
+    logger.info "event=STABILIZING nodes=#{nodes}"
+    sleep Random.rand(0..4)
+    logger.info "event=STABLE nodes=#{nodes}"
   end
 end

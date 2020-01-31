@@ -1,16 +1,22 @@
 name: clustering
-version: 0.1.0
+version: 0.1.1
 crystal: 0.32.1
 
 dependencies:
+  action-controller:
+    github: spider-gazelle/action-controller
+
   etcd:
     github: aca-labs/crystal-etcd
+
   hound-dog:
     github: aca-labs/hound-dog
     branch: master
+
   ulid:
     github: aca-labs/ulid
     version: ~>0.1
+
   redis:
     github: stefanwille/crystal-redis
 
