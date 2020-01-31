@@ -8,10 +8,12 @@ require "../clustering"
 
 class Node
   include Clustering
+  alias TaggedLogger = ActionController::Logger::TaggedLogger
+
   getter name : String
   @num : Int32 = Random.rand(1..65536)
 
-  getter logger : Logger = Logger.new(STDOUT, level: Logger::Severity::DEBUG)
+  getter logger : TaggedLogger = TaggedLogger.new(ActionController::Base.settings.logger)
   getter discovery : HoundDog::Discovery
   getter redis : Redis::PooledClient = Redis::PooledClient.new
 
@@ -27,14 +29,13 @@ class Node
     @ip = ip || "fake-#{@num.to_s.rjust(5, '0')}"
     @port = port || @num
     @name = name || "#{@num.to_s.rjust(5, '0')}"
+    @logger.level = Logger::Severity::DEBUG
 
     @discovery = HoundDog::Discovery.new(service: "poc", ip: @ip, port: @port)
     super()
   end
 
-  def stabilize(nodes)
-    logger.info "event=STABILIZING nodes=#{nodes}"
+  def stabilize(_nodes)
     sleep Random.rand(0..4)
-    logger.info "event=STABLE nodes=#{nodes}"
   end
 end

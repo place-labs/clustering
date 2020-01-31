@@ -1,3 +1,4 @@
+require "action-controller"
 require "etcd"
 require "hound-dog"
 require "redis"
@@ -13,7 +14,7 @@ module Clustering
   # For shared connection queries
   abstract def redis : Redis::Client
 
-  abstract def logger : Logger
+  abstract def logger : ActionController::Logger::TaggedLogger
 
   # Whether node is the cluster leader
   getter? leader : Bool = false
@@ -48,17 +49,17 @@ module Clustering
 
   def initialize
     @election_watcher = etcd_client.watch.watch(@@election_key, filters: [Etcd::Watch::Watcher::WatchFilter::NOPUT]) do |e|
-      logger.debug("etcd_event=election event=#{e.inspect}")
+      logger.tag_debug(etcd_event: "election", event: e.inspect)
       handle_election
     end
 
     @readiness_watcher = etcd_client.watch.watch_prefix(@@readiness_key) do |e|
-      logger.debug("etcd_event=ready event=#{e.inspect}")
+      logger.tag_debug(etcd_event: "ready", event: e.inspect)
       handle_readiness_event
     end
 
     @version_watcher = etcd_client.watch.watch(@@cluster_version_key) do |e|
-      logger.debug("etcd_event=version event=#{e.inspect}")
+      logger.tag_debug(etcd_event: "version", event: e.inspect)
       handle_version_change(e)
     end
   end
@@ -110,7 +111,7 @@ module Clustering
     lease_id = discovery.lease_id.as(Int64)
 
     etcd_client.kv.put(@@cluster_version_key, version, lease_id)
-    logger.info("v=#{version} message=set version")
+    logger.tag_info(message: "leader set version", cluster_version: version)
   end
 
   # Node stabilization
@@ -132,8 +133,10 @@ module Clustering
   end
 
   private def _stabilize(cluster_version, nodes)
+    logger.tag_info(node_event: "stabilizing", cluster_version: cluster_version)
     stabilize(nodes)
     set_ready(cluster_version)
+    logger.tag_info(node_event: "stable", cluster_version: cluster_version)
   end
 
   private def set_ready(version : String)
@@ -165,7 +168,7 @@ module Clustering
                 # Attempt to set self as if a leader is not already present
                 etcd.kv.put_not_exists(@@election_key, HoundDog::Service.key_value({ip: ip, port: port}), lease_id)
               end
-    logger.info("leader?=#{leader?} leader=#{leader_node}")
+    logger.tag_info(is_leader: leader?, leader: leader_node)
     update_version if leader?
   rescue e
     logger.error("While participating in election #{e.inspect_with_backtrace}")
@@ -186,7 +189,7 @@ module Clustering
   #
   def handle_version_change(value)
     version = value.first?.try(&.kv.value) || ""
-    logger.debug("v=#{version} l?=#{leader?} message=version change")
+    logger.tag_debug(cluster_version: version, is_leader: leader?, message: "received version change")
     stabilize_channel.send({discovery.nodes.dup, version})
   rescue e
     logger.error("While watching cluster version #{e.inspect_with_backtrace}")
