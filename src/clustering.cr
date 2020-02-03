@@ -99,6 +99,16 @@ module Clustering
     self
   end
 
+  def stop
+    discovery.unregister
+    election_watcher.stop
+    version_watcher.stop
+    readiness_watcher.stop
+
+    @leader = false
+    self
+  end
+
   def leader_node
     etcd_client.kv.get(ELECTION_KEY).try(&->HoundDog::Service.node(String))
   end
@@ -123,8 +133,10 @@ module Clustering
   #
   # Ensures that the node will have only the latest version
   def consume_stabilization_events
-    loop do
-      nodes, version = stabilize_channel.receive
+    while discovery.registered?
+      message = stabilize_channel.receive?
+      break unless message
+      nodes, version = message
       next if !version.empty? && version < cluster_version
       _stabilize(version, nodes)
     end

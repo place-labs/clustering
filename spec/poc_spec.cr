@@ -66,5 +66,17 @@ describe Clustering do
 
     # Check for a consistent version history
     redis_versions.should eq versions
+
+    # Check removing a node, removes from all members
+    test_node_3.stop
+    sleep 0.1
+
+    test_node_1.discovery.nodes.size.should eq 3
+    test_node_2.discovery.nodes.size.should eq 3
+    test_node_3.discovery.nodes.size.should eq 3
+
+    test_node_1.stop
+    test_node_2.stop
+    test_node_3.stop
   end
 end
