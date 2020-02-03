@@ -31,34 +31,34 @@ module Clustering
 
   delegate service, to: discovery
 
-  @@meta_namespace = "cluster"
-  @@election_key = "#{@@meta_namespace}/leader"
-  @@readiness_key = "#{@@meta_namespace}/node_version"
-  @@cluster_version_key = "#{@@meta_namespace}/cluster_version"
-  @@redis_version_channel = "#{@@meta_namespace}/cluster_version"
+  private META_NAMESPACE        = "cluster"
+  private ELECTION_KEY          = "#{META_NAMESPACE}/leader"
+  private READINESS_KEY         = "#{META_NAMESPACE}/node_version"
+  private CLUSTER_VERSION_KEY   = "#{META_NAMESPACE}/cluster_version"
+  private REDIS_VERSION_CHANNEL = "#{META_NAMESPACE}/cluster_version"
 
-  class_getter meta_namespace : String
-  class_getter election_key : String
-  class_getter readiness_key : String
-  class_getter cluster_version_key : String
-  class_getter redis_version_channel : String
+  class_getter meta_namespace = META_NAMESPACE
+  class_getter election_key = ELECTION_KEY
+  class_getter readiness_key = READINESS_KEY
+  class_getter cluster_version_key = CLUSTER_VERSION_KEY
+  class_getter redis_version_channel = REDIS_VERSION_CHANNEL
 
   private getter election_watcher : Etcd::Watch::Watcher
   private getter readiness_watcher : Etcd::Watch::Watcher
   private getter version_watcher : Etcd::Watch::Watcher
 
   def initialize
-    @election_watcher = etcd_client.watch.watch(@@election_key, filters: [Etcd::Watch::Watcher::WatchFilter::NOPUT]) do |e|
+    @election_watcher = etcd_client.watch.watch(ELECTION_KEY, filters: [Etcd::Watch::Watcher::WatchFilter::NOPUT]) do |e|
       logger.tag_debug(etcd_event: "election", event: e.inspect)
       handle_election
     end
 
-    @readiness_watcher = etcd_client.watch.watch_prefix(@@readiness_key) do |e|
+    @readiness_watcher = etcd_client.watch.watch_prefix(READINESS_KEY) do |e|
       logger.tag_debug(etcd_event: "ready", event: e.inspect)
       handle_readiness_event
     end
 
-    @version_watcher = etcd_client.watch.watch(@@cluster_version_key) do |e|
+    @version_watcher = etcd_client.watch.watch(CLUSTER_VERSION_KEY) do |e|
       logger.tag_debug(etcd_event: "version", event: e.inspect)
       handle_version_change(e)
     end
@@ -100,7 +100,7 @@ module Clustering
   end
 
   def leader_node
-    etcd_client.kv.get(@@election_key).try(&->HoundDog::Service.node(String))
+    etcd_client.kv.get(ELECTION_KEY).try(&->HoundDog::Service.node(String))
   end
 
   # Leader updates the version in etcd when
@@ -110,7 +110,7 @@ module Clustering
     version = ULID.generate
     lease_id = discovery.lease_id.as(Int64)
 
-    etcd_client.kv.put(@@cluster_version_key, version, lease_id)
+    etcd_client.kv.put(CLUSTER_VERSION_KEY, version, lease_id)
     logger.tag_info(message: "leader set version", cluster_version: version)
   end
 
@@ -159,14 +159,14 @@ module Clustering
     lease_id = discovery.lease_id.as(Int64)
 
     # Determine leader status
-    @leader = if (kv = etcd.kv.range(@@election_key).kvs.first?)
+    @leader = if (kv = etcd.kv.range(ELECTION_KEY).kvs.first?)
                 # Check if it is the same as the current node
                 node = HoundDog::Service.node(kv.value.as(String))
 
                 node[:ip] == ip && node[:port] == port && lease_id == kv.lease
               else
                 # Attempt to set self as if a leader is not already present
-                etcd.kv.put_not_exists(@@election_key, HoundDog::Service.key_value({ip: ip, port: port}), lease_id)
+                etcd.kv.put_not_exists(ELECTION_KEY, HoundDog::Service.key_value({ip: ip, port: port}), lease_id)
               end
     logger.tag_info(is_leader: leader?, leader: leader_node)
     update_version if leader?
@@ -201,7 +201,7 @@ module Clustering
   def handle_readiness_event
     if leader? && cluster_consistent? && previous_node_versions != node_versions
       @previous_node_versions = @node_versions.dup
-      redis.publish(@@redis_version_channel, cluster_version)
+      redis.publish(REDIS_VERSION_CHANNEL, cluster_version)
     end
   rescue e
     logger.error("While handling readiness event #{e.inspect_with_backtrace}")
@@ -214,9 +214,9 @@ module Clustering
   # If all the nodes are at the same version, the cluster is consistent.
   def cluster_consistent?
     # Get values under the "readiness key"
-    @node_versions = etcd_client.kv.range_prefix(@@readiness_key).kvs.reduce({} of String => String) do |ready, kv|
+    @node_versions = etcd_client.kv.range_prefix(READINESS_KEY).kvs.reduce({} of String => String) do |ready, kv|
       if value = kv.value
-        ready[strip_namespace(kv.key, @@readiness_key)] = value
+        ready[strip_namespace(kv.key, READINESS_KEY)] = value
       end
       ready
     end
@@ -232,7 +232,7 @@ module Clustering
   end
 
   private def node_ready_key
-    "#{@@readiness_key}/#{discovery_value}"
+    "#{READINESS_KEY}/#{discovery_value}"
   end
 
   private def discovery_value
