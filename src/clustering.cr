@@ -4,17 +4,30 @@ require "hound-dog"
 require "redis"
 require "ulid"
 
-module Clustering
+class Clustering
+  alias TaggedLogger = ActionController::Logger::TaggedLogger
+
   # Performed to align nodes in the cluster
-  abstract def stabilize(nodes : Array(HoundDog::Node))
+  getter stabilize : Array(HoundDog::Service::Node) -> Nil
 
-  # Implement a etcd_client generator
-  abstract def etcd_client : Etcd::Client
+  private getter logger : TaggedLogger
 
-  # For shared connection queries
-  abstract def redis : Redis::Client
+  class_getter meta_namespace = META_NAMESPACE
+  class_getter cluster_version_key = CLUSTER_VERSION_KEY
+  class_getter election_key = ELECTION_KEY
+  class_getter readiness_key = READINESS_KEY
+  class_getter redis_version_channel = REDIS_VERSION_CHANNEL
 
-  abstract def logger : ActionController::Logger::TaggedLogger
+  private getter etcd_host : String
+  private getter etcd_port : Int32
+
+  # Generate a new Etcd client
+  def etcd_client
+    Etcd::Client.new(host: etcd_host, port: etcd_port)
+  end
+
+  # For setting ready state in redis
+  private getter redis : Redis
 
   # Whether node is the cluster leader
   getter? leader : Bool = false
@@ -27,28 +40,27 @@ module Clustering
   getter port : Int32
 
   # Provides cluster node discovery
-  abstract def discovery : HoundDog::Discovery
+  getter discovery : HoundDog::Discovery
 
   delegate service, to: discovery
-
-  private META_NAMESPACE        = "cluster"
-  private ELECTION_KEY          = "#{META_NAMESPACE}/leader"
-  private READINESS_KEY         = "#{META_NAMESPACE}/node_version"
-  private CLUSTER_VERSION_KEY   = "#{META_NAMESPACE}/cluster_version"
-  private REDIS_VERSION_CHANNEL = "#{META_NAMESPACE}/cluster_version"
-
-  class_getter meta_namespace = META_NAMESPACE
-  class_getter election_key = ELECTION_KEY
-  class_getter readiness_key = READINESS_KEY
-  class_getter cluster_version_key = CLUSTER_VERSION_KEY
-  class_getter redis_version_channel = REDIS_VERSION_CHANNEL
 
   private getter election_watcher : Etcd::Watch::Watcher
   private getter readiness_watcher : Etcd::Watch::Watcher
   private getter version_watcher : Etcd::Watch::Watcher
 
-  def initialize
-    @election_watcher = etcd_client.watch.watch(ELECTION_KEY, filters: [Etcd::Watch::Watcher::WatchFilter::NOPUT]) do |e|
+  def initialize(
+    @ip : String,
+    @port : Int32,
+    @stabilize : Array(HoundDog::Service::Node) -> Void,
+    discovery : HoundDog::Discovery? = nil,
+    @etcd_host : String = ENV["ETCD_HOST"]? || "localhost",
+    @etcd_port : Int32 = ENV["ETCD_PORT"]?.try(&.to_i?) || 2379,
+    @logger : TaggedLogger = TaggedLogger.new(ActionController::Base.settings.logger),
+    @redis : Redis = Redis.new(url: ENV["redis_url"]?)
+  )
+    @discovery = discovery || HoundDog::Discovery.new(service: "clustering", ip: ip, port: port)
+
+    @election_watcher = etcd_client.watch.watch(ELECTION_KEY, filters: [Etcd::Watch::Filter::NOPUT]) do |e|
       logger.tag_debug(etcd_event: "election", event: e.inspect)
       handle_election
     end
@@ -144,9 +156,9 @@ module Clustering
     logger.error("While consuming stabilization event #{e.inspect_with_backtrace}")
   end
 
-  private def _stabilize(cluster_version, nodes)
+  private def _stabilize(cluster_version : String, nodes : Array(HoundDog::Service::Node))
     logger.tag_info(node_event: "stabilizing", cluster_version: cluster_version)
-    stabilize(nodes)
+    stabilize.call(nodes)
     set_ready(cluster_version)
     logger.tag_info(node_event: "stable", cluster_version: cluster_version)
   end
@@ -235,6 +247,15 @@ module Clustering
 
     node_versions.all? { |_, v| v == cluster_version }
   end
+
+  # Constants
+  #############################################################################
+
+  private META_NAMESPACE        = "cluster"
+  private CLUSTER_VERSION_KEY   = "#{META_NAMESPACE}/cluster_version"
+  private ELECTION_KEY          = "#{META_NAMESPACE}/leader"
+  private READINESS_KEY         = "#{META_NAMESPACE}/node_version"
+  private REDIS_VERSION_CHANNEL = "#{META_NAMESPACE}/cluster_version"
 
   # Helpers
   #############################################################################

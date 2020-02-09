@@ -4,8 +4,11 @@ require "hound-dog"
 class Test < Node
   getter received_nodes = [] of Array(HoundDog::Service::Node)
 
-  def stabilize(nodes)
-    received_nodes << nodes
+  def initialize
+    super(stabilize: ->(nodes : Array(HoundDog::Service::Node)) {
+      received_nodes << nodes
+      nil
+    })
   end
 end
 
