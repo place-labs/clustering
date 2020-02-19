@@ -4,8 +4,11 @@ require "hound-dog"
 class Test < Node
   getter received_nodes = [] of Array(HoundDog::Service::Node)
 
-  def stabilize(nodes)
-    received_nodes << nodes
+  def initialize
+    super(stabilize: ->(nodes : Array(HoundDog::Service::Node)) {
+      @received_nodes << nodes
+      nil
+    })
   end
 end
 
@@ -23,7 +26,8 @@ describe Clustering do
     end
     Fiber.yield
 
-    test_node_1 = Test.new.start
+    test_node_1 = Test.new
+    test_node_1.start
     sleep 0.1
     test_node_1.leader?.should be_true
     versions << test_node_1.cluster_version

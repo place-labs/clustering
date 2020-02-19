@@ -1,5 +1,6 @@
 require "action-controller/logger"
 require "etcd"
+require "hound-dog"
 require "logger"
 require "redis"
 require "uuid"
@@ -7,35 +8,41 @@ require "uuid"
 require "../clustering"
 
 class Node
-  include Clustering
   alias TaggedLogger = ActionController::Logger::TaggedLogger
 
-  getter name : String
   @num : Int32 = Random.rand(1..65536)
 
-  getter logger : TaggedLogger = TaggedLogger.new(ActionController::Base.settings.logger)
+  getter name : String
+  getter clustering : Clustering
   getter discovery : HoundDog::Discovery
-  getter redis : Redis::PooledClient = Redis::PooledClient.new
+  getter logger : TaggedLogger
 
-  def etcd_client : Etcd::Client
-    HoundDog.etcd_client
-  end
+  delegate start, stop, leader?, cluster_version, to: clustering
+
+  @ip : String
+  @port : Int32
+  @name : String
 
   def initialize(
     ip : String? = nil,
     port : Int32? = nil,
-    name : String? = nil
+    name : String? = nil,
+    stabilize : Array(HoundDog::Service::Node) -> Void = ->(_nodes : Array(HoundDog::Service::Node)) {},
+    @logger : TaggedLogger = TaggedLogger.new(ActionController::Base.settings.logger)
   )
-    @ip = ip || "fake-#{@num.to_s.rjust(5, '0')}"
-    @port = port || @num
-    @name = name || "#{@num.to_s.rjust(5, '0')}"
     @logger.level = Logger::Severity::DEBUG
 
-    @discovery = HoundDog::Discovery.new(service: "poc", ip: @ip, port: @port)
-    super()
-  end
+    @name = name || "#{@num.to_s.rjust(5, '0')}"
+    @ip = ip || "fake-#{@name}"
+    @port = port || @num
 
-  def stabilize(_nodes)
-    sleep Random.rand(0..4)
+    @discovery = HoundDog::Discovery.new(service: "poc", ip: @ip, port: @port)
+    @clustering = Clustering.new(
+      ip: @ip,
+      port: @port,
+      discovery: @discovery,
+      logger: @logger,
+      stabilize: stabilize,
+    )
   end
 end

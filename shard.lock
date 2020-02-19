@@ -2,7 +2,7 @@ version: 1.0
 shards:
   action-controller:
     github: spider-gazelle/action-controller
-    version: 2.3.2
+    version: 2.3.4
 
   ameba:
     github: crystal-ameba/ameba
@@ -22,7 +22,7 @@ shards:
 
   etcd:
     github: aca-labs/crystal-etcd
-    version: 0.2.4
+    version: 0.3.1
 
   habitat:
     github: luckyframework/habitat
@@ -30,7 +30,7 @@ shards:
 
   hound-dog:
     github: aca-labs/hound-dog
-    commit: 4b769c2caf873139a024517103df029594906cd0
+    commit: d03b830eef527b44d5f03cdbae4534fb0d3d8f06
 
   kilt:
     github: jeromegn/kilt
@@ -50,7 +50,7 @@ shards:
 
   rendezvous-hash:
     github: caspiano/rendezvous-hash
-    version: 0.2.2
+    version: 0.3.1
 
   tasker:
     github: spider-gazelle/tasker
