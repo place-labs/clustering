@@ -6,7 +6,7 @@ class Test < Node
 
   def initialize
     super(stabilize: ->(nodes : Array(HoundDog::Service::Node)) {
-      received_nodes << nodes
+      @received_nodes << nodes
       nil
     })
   end
@@ -26,7 +26,8 @@ describe Clustering do
     end
     Fiber.yield
 
-    test_node_1 = Test.new.start
+    test_node_1 = Test.new
+    test_node_1.start
     sleep 0.1
     test_node_1.leader?.should be_true
     versions << test_node_1.cluster_version

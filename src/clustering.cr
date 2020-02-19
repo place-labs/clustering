@@ -8,7 +8,7 @@ class Clustering
   alias TaggedLogger = ActionController::Logger::TaggedLogger
 
   # Performed to align nodes in the cluster
-  getter stabilize : Array(HoundDog::Service::Node) -> Nil
+  getter stabilize : Array(HoundDog::Service::Node) -> Void
 
   private getter logger : TaggedLogger
 

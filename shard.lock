@@ -2,7 +2,7 @@ version: 1.0
 shards:
   action-controller:
     github: spider-gazelle/action-controller
-    version: 2.3.2
+    version: 2.3.4
 
   ameba:
     github: crystal-ameba/ameba

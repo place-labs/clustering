@@ -13,12 +13,11 @@ class Node
   @num : Int32 = Random.rand(1..65536)
 
   getter name : String
-
   getter clustering : Clustering
   getter discovery : HoundDog::Discovery
   getter logger : TaggedLogger
 
-  delegate start, leader?, cluster_version, to: clustering
+  delegate start, stop, leader?, cluster_version, to: clustering
 
   @ip : String
   @port : Int32
@@ -28,8 +27,8 @@ class Node
     ip : String? = nil,
     port : Int32? = nil,
     name : String? = nil,
-    @logger : TaggedLogger = TaggedLogger.new(ActionController::Base.settings.logger),
-    stabilize : Array(HoundDog::Service::Node) -> Nil = ->(n : Array(HoundDog::Service::Node)) { nil }
+    stabilize : Array(HoundDog::Service::Node) -> Void = ->(_nodes : Array(HoundDog::Service::Node)) {},
+    @logger : TaggedLogger = TaggedLogger.new(ActionController::Base.settings.logger)
   )
     @logger.level = Logger::Severity::DEBUG
 
@@ -37,23 +36,13 @@ class Node
     @ip = ip || "fake-#{@name}"
     @port = port || @num
 
-    stabilize = ->(nodes : Array(HoundDog::Service::Node)) { stabilize(nodes) }
-    puts typeof(stabilize)
-
     @discovery = HoundDog::Discovery.new(service: "poc", ip: @ip, port: @port)
     @clustering = Clustering.new(
       ip: @ip,
       port: @port,
       discovery: @discovery,
       logger: @logger,
-      stabilize: ->(nodes : Array(HoundDog::Service::Node)) { nil },
-          # stabilize: ->(nodes : Array(HoundDog::Service::Node)) { stabilize(nodes) },
-)
-  end
-
-  def stabilize(nodes : Array(HoundDog::Service::Node))
-    puts nodes
-    sleep Random.rand(0..4)
-    nil
+      stabilize: stabilize,
+    )
   end
 end
