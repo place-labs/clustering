@@ -1,5 +1,5 @@
-sudo: required
 language: crystal
+os: linux
 
 before_install:
   # Add etcd 3.3.13
@@ -7,7 +7,7 @@ before_install:
 
 services:
   - docker
-  - redis-server
+  - redis
 
 install:
   - shards install

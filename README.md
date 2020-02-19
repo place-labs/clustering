@@ -1,10 +1,16 @@
 # clustering
 
-`src/clustering.cr` defines an abstract module if you wish to include a clustering component to your class.
-Implement `stabilize(nodes : Array(NamedTuple(ip: String, port: Int32)))` with your required cluster stabilization logic.
+[![Build Status](https://travis-ci.com/aca-labs/clustering.svg?branch=master)](https://travis-ci.com/aca-labs/clustering)
+
+`Clustering` class implements simple clustering logic through etcd as a distributed consistent key-value store.
 Once a cluster has stabilized, a message with the version is published to a redis channel defined by `Clustering.redis_version_channel`.
 
 Running `$ shards build` will create a simple proof of concept app, run it with `./bin/poc`
+
+## Usage
+
+The `stabilize : Array(NamedTuple(ip: String, port: Int32)) -> Void` arg of `Clustering` defines the class's stabilization logic that is fired upon cluster join, leave, and election events.
+The array of node data is all of the nodes in the cluster.
 
 ## Implementation
 
