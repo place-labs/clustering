@@ -22,7 +22,7 @@ shards:
 
   etcd:
     github: aca-labs/crystal-etcd
-    version: 0.3.0
+    version: 0.3.1
 
   habitat:
     github: luckyframework/habitat
