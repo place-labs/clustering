@@ -23,7 +23,7 @@ class Clustering
 
   # Generate a new Etcd client
   def etcd_client
-    Etcd::Client.new(host: etcd_host, port: etcd_port)
+    Etcd::Client.new(host: etcd_host, port: etcd_port, logger: logger)
   end
 
   # For setting ready state in redis
