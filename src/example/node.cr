@@ -27,7 +27,7 @@ class Node
     ip : String? = nil,
     port : Int32? = nil,
     name : String? = nil,
-    stabilize : Array(HoundDog::Service::Node) -> Void = ->(_nodes : Array(HoundDog::Service::Node)) {},
+    stabilize : Array(HoundDog::Service::Node) -> = ->(_nodes : Array(HoundDog::Service::Node)) {},
     @logger : TaggedLogger = TaggedLogger.new(ActionController::Base.settings.logger)
   )
     @logger.level = Logger::Severity::DEBUG

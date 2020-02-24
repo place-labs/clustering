@@ -8,7 +8,7 @@ class Clustering
   alias TaggedLogger = ActionController::Logger::TaggedLogger
 
   # Performed to align nodes in the cluster
-  getter stabilize : Array(HoundDog::Service::Node) -> Void
+  getter stabilize : Array(HoundDog::Service::Node) ->
 
   private getter logger : TaggedLogger
 
@@ -51,7 +51,7 @@ class Clustering
   def initialize(
     @ip : String,
     @port : Int32,
-    @stabilize : Array(HoundDog::Service::Node) -> Void,
+    @stabilize : Array(HoundDog::Service::Node) ->,
     discovery : HoundDog::Discovery? = nil,
     @etcd_host : String = ENV["ETCD_HOST"]? || "localhost",
     @etcd_port : Int32 = ENV["ETCD_PORT"]?.try(&.to_i?) || 2379,
@@ -164,7 +164,10 @@ class Clustering
   end
 
   private def set_ready(version : String)
-    raise "Node must be registered before participating in cluster" unless discovery.registered?
+    unless discovery.registered?
+      logger.warn "unregistered cluster node setting readiness"
+      return
+    end
 
     @cluster_version = version
     # Set the ready key for this node in etcd
@@ -177,7 +180,10 @@ class Clustering
   # Try to acquire the leader role
   #
   private def handle_election
-    raise "Node must be registered before participating in election" unless discovery.registered?
+    unless discovery.registered?
+      logger.warn "unregistered cluster node participating in election"
+      return
+    end
 
     etcd = etcd_client
     lease_id = discovery.lease_id.as(Int64)

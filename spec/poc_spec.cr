@@ -24,6 +24,7 @@ describe Clustering do
         end
       end
     end
+
     Fiber.yield
 
     test_node_1 = Test.new

@@ -52,6 +52,10 @@ shards:
     github: caspiano/rendezvous-hash
     version: 0.3.1
 
+  retriable:
+    github: sija/retriable.cr
+    version: 0.2.0
+
   tasker:
     github: spider-gazelle/tasker
     version: 1.2.2
