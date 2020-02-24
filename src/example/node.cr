@@ -7,8 +7,9 @@ require "uuid"
 
 require "../clustering"
 
+# :nodoc:
 class Node
-  alias TaggedLogger = ActionController::Logger::TaggedLogger
+  private alias TaggedLogger = ActionController::Logger::TaggedLogger
 
   @num : Int32 = Random.rand(1..65536)
 
