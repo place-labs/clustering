@@ -3,6 +3,7 @@ require "etcd"
 require "hound-dog"
 require "redis"
 require "ulid"
+require "uri"
 
 class Clustering
   alias TaggedLogger = ActionController::Logger::TaggedLogger
@@ -12,11 +13,12 @@ class Clustering
 
   private getter logger : TaggedLogger
 
-  class_getter meta_namespace = META_NAMESPACE
   class_getter cluster_version_key = CLUSTER_VERSION_KEY
   class_getter election_key = ELECTION_KEY
+  class_getter meta_namespace = META_NAMESPACE
   class_getter readiness_key = READINESS_KEY
   class_getter redis_version_channel = REDIS_VERSION_CHANNEL
+  class_getter service_namespace = SERVICE_NAMESPACE
 
   private getter etcd_host : String
   private getter etcd_port : Int32
@@ -30,29 +32,29 @@ class Clustering
   # The version the current node is stable against
   getter cluster_version : String = ""
 
-  # Node Metadata
-  getter ip : String
-  getter port : Int32
-
   # Provides cluster node discovery
   getter discovery : HoundDog::Discovery
 
-  delegate service, to: discovery
+  delegate name, nodes, service, uri, to: discovery
 
   private getter election_watcher : Etcd::Watch::Watcher
   private getter readiness_watcher : Etcd::Watch::Watcher
   private getter version_watcher : Etcd::Watch::Watcher
 
   def initialize(
-    @ip : String,
-    @port : Int32,
+    uri : String | URI,
+    name : String = ULID.generate,
     discovery : HoundDog::Discovery? = nil,
     @etcd_host : String = ENV["ETCD_HOST"]? || "localhost",
     @etcd_port : Int32 = ENV["ETCD_PORT"]?.try(&.to_i?) || 2379,
     @logger : TaggedLogger = TaggedLogger.new(ActionController::Base.settings.logger),
     @redis : Redis = Redis.new(url: ENV["redis_url"]?)
   )
-    @discovery = discovery || HoundDog::Discovery.new(service: "clustering", ip: ip, port: port)
+    @discovery = discovery || HoundDog::Discovery.new(
+      service: SERVICE_NAMESPACE,
+      name: name,
+      uri: uri
+    )
 
     @election_watcher = etcd_client.watch.watch(ELECTION_KEY, filters: [Etcd::Watch::Filter::NOPUT]) do |e|
       logger.tag_debug(etcd_event: "election", event: e.inspect)
@@ -129,7 +131,12 @@ class Clustering
   # Attains the current leader node
   #
   def leader_node
-    etcd_client.kv.get(ELECTION_KEY).try(&->HoundDog::Service.node(String))
+    # Find the uri of the node who is the leader
+    etcd_client.kv.get(ELECTION_KEY).try do |uri_string|
+      uri = URI.parse(uri_string)
+      # Look through cluster nodes for that uri
+      nodes.bsearch { |n| n[:uri] == uri }
+    end
   end
 
   # Leader updates the version in etcd when
@@ -199,13 +206,13 @@ class Clustering
 
     # Determine leader status
     @leader = if (kv = etcd.kv.range(ELECTION_KEY).kvs.first?)
-                # Check if it is the same as the current node
-                node = HoundDog::Service.node(kv.value.as(String))
+                leader_uri = URI.parse(kv.value.as(String))
 
-                node[:ip] == ip && node[:port] == port && lease_id == kv.lease
+                # Check if it is the same as the current node
+                uri == leader_uri && lease_id == kv.lease
               else
                 # Attempt to set self as if a leader is not already present
-                etcd.kv.put_not_exists(ELECTION_KEY, HoundDog::Service.key_value({ip: ip, port: port}), lease_id)
+                etcd.kv.put_not_exists(ELECTION_KEY, uri.to_s, lease_id)
               end
     logger.tag_info(is_leader: leader?, leader: leader_node)
     update_version if leader?
@@ -270,11 +277,12 @@ class Clustering
   # Constants
   #############################################################################
 
-  private META_NAMESPACE        = "cluster"
   private CLUSTER_VERSION_KEY   = "#{META_NAMESPACE}/cluster_version"
   private ELECTION_KEY          = "#{META_NAMESPACE}/leader"
+  private META_NAMESPACE        = "cluster"
   private READINESS_KEY         = "#{META_NAMESPACE}/node_version"
   private REDIS_VERSION_CHANNEL = "#{META_NAMESPACE}/cluster_version"
+  private SERVICE_NAMESPACE     = "clustering"
 
   # Helpers
   #############################################################################
@@ -290,11 +298,7 @@ class Clustering
   end
 
   private def node_ready_key
-    "#{READINESS_KEY}/#{discovery_value}"
-  end
-
-  private def discovery_value
-    "#{ip}:#{port}"
+    "#{READINESS_KEY}/#{name}"
   end
 
   private def watching?

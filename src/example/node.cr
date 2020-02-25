@@ -20,27 +20,24 @@ class Node
   getter stabilize : Array(HoundDog::Service::Node) ->
   delegate stop, leader?, cluster_version, to: clustering
 
-  @ip : String
-  @port : Int32
   @name : String
+  @uri : String
 
   def initialize(
-    ip : String? = nil,
-    port : Int32? = nil,
     name : String? = nil,
+    uri : String? = nil,
     @stabilize : Array(HoundDog::Service::Node) -> = ->(_nodes : Array(HoundDog::Service::Node)) {},
     @logger : TaggedLogger = TaggedLogger.new(ActionController::Base.settings.logger)
   )
     @logger.level = Logger::Severity::DEBUG
 
     @name = name || "#{@num.to_s.rjust(5, '0')}"
-    @ip = ip || "fake-#{@name}"
-    @port = port || @num
+    @uri = uri || "https://fake-#{@name}:#{@num}"
 
-    @discovery = HoundDog::Discovery.new(service: "poc", ip: @ip, port: @port)
+    @discovery = HoundDog::Discovery.new(service: "poc", name: @name, uri: @uri)
     @clustering = Clustering.new(
-      ip: @ip,
-      port: @port,
+      name: @name,
+      uri: @uri,
       discovery: @discovery,
       logger: @logger,
     )
