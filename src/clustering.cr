@@ -8,7 +8,7 @@ class Clustering
   alias TaggedLogger = ActionController::Logger::TaggedLogger
 
   # Performed to align nodes in the cluster
-  getter stabilize : Array(HoundDog::Service::Node) ->
+  getter stabilize : (Array(HoundDog::Service::Node) ->)?
 
   private getter logger : TaggedLogger
 
@@ -20,11 +20,6 @@ class Clustering
 
   private getter etcd_host : String
   private getter etcd_port : Int32
-
-  # Generate a new Etcd client
-  def etcd_client
-    Etcd::Client.new(host: etcd_host, port: etcd_port, logger: logger)
-  end
 
   # For setting ready state in redis
   private getter redis : Redis
@@ -51,7 +46,6 @@ class Clustering
   def initialize(
     @ip : String,
     @port : Int32,
-    @stabilize : Array(HoundDog::Service::Node) ->,
     discovery : HoundDog::Discovery? = nil,
     @etcd_host : String = ENV["ETCD_HOST"]? || "localhost",
     @etcd_port : Int32 = ENV["ETCD_PORT"]?.try(&.to_i?) || 2379,
@@ -111,6 +105,17 @@ class Clustering
     self
   end
 
+  # Like above.
+  # Accepts a block that will be called with cluster nodes
+  # during stabilization events
+  #
+  def start(&stabilize : Array(HoundDog::Service::Node) ->)
+    @stabilize = stabilize
+    start
+  end
+
+  # Unregisters node from the cluster and ceases event handling
+  #
   def stop
     discovery.unregister
     election_watcher.stop
@@ -121,6 +126,8 @@ class Clustering
     self
   end
 
+  # Attains the current leader node
+  #
   def leader_node
     etcd_client.kv.get(ELECTION_KEY).try(&->HoundDog::Service.node(String))
   end
@@ -153,12 +160,14 @@ class Clustering
       _stabilize(version, nodes)
     end
   rescue e
-    logger.error("While consuming stabilization event #{e.inspect_with_backtrace}")
+    if watching?
+      logger.error { "While consuming stabilization event #{e.inspect_with_backtrace}" }
+    end
   end
 
   private def _stabilize(cluster_version : String, nodes : Array(HoundDog::Service::Node))
     logger.tag_info(node_event: "stabilizing", cluster_version: cluster_version)
-    stabilize.call(nodes)
+    stabilize.try &.call(nodes)
     set_ready(cluster_version)
     logger.tag_info(node_event: "stable", cluster_version: cluster_version)
   end
@@ -201,7 +210,9 @@ class Clustering
     logger.tag_info(is_leader: leader?, leader: leader_node)
     update_version if leader?
   rescue e
-    logger.error("While participating in election #{e.inspect_with_backtrace}")
+    if watching?
+      logger.error { "While participating in election #{e.inspect_with_backtrace}" }
+    end
   end
 
   # Cluster readiness
@@ -212,7 +223,9 @@ class Clustering
   def cluster_change
     update_version if leader?
   rescue e
-    logger.error("During cluster change #{e.inspect_with_backtrace}")
+    if watching?
+      logger.error { "During cluster change #{e.inspect_with_backtrace}" }
+    end
   end
 
   # Leader has published a new version to etcd
@@ -238,7 +251,7 @@ class Clustering
   end
 
   getter node_versions = {} of String => String
-  getter previous_node_versions = {} of String => String
+  private getter previous_node_versions = {} of String => String
 
   # When there's an event under the readiness namespace, node creates a hash from node to version.
   # If all the nodes are at the same version, the cluster is consistent.
@@ -266,6 +279,12 @@ class Clustering
   # Helpers
   #############################################################################
 
+  # Generate a new Etcd client
+  #
+  def etcd_client
+    Etcd::Client.new(host: etcd_host, port: etcd_port, logger: logger)
+  end
+
   private def strip_namespace(key, namespace)
     key.lchop("#{namespace}/")
   end
@@ -276,5 +295,12 @@ class Clustering
 
   private def discovery_value
     "#{ip}:#{port}"
+  end
+
+  private def watching?
+    election_watcher.watching &&
+      readiness_watcher.watching &&
+      version_watcher.watching &&
+      discovery.registered?
   end
 end

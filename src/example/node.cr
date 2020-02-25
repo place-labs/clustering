@@ -17,8 +17,8 @@ class Node
   getter clustering : Clustering
   getter discovery : HoundDog::Discovery
   getter logger : TaggedLogger
-
-  delegate start, stop, leader?, cluster_version, to: clustering
+  getter stabilize : Array(HoundDog::Service::Node) ->
+  delegate stop, leader?, cluster_version, to: clustering
 
   @ip : String
   @port : Int32
@@ -28,7 +28,7 @@ class Node
     ip : String? = nil,
     port : Int32? = nil,
     name : String? = nil,
-    stabilize : Array(HoundDog::Service::Node) -> = ->(_nodes : Array(HoundDog::Service::Node)) {},
+    @stabilize : Array(HoundDog::Service::Node) -> = ->(_nodes : Array(HoundDog::Service::Node)) {},
     @logger : TaggedLogger = TaggedLogger.new(ActionController::Base.settings.logger)
   )
     @logger.level = Logger::Severity::DEBUG
@@ -43,7 +43,10 @@ class Node
       port: @port,
       discovery: @discovery,
       logger: @logger,
-      stabilize: stabilize,
     )
+  end
+
+  def start
+    clustering.start &stabilize
   end
 end

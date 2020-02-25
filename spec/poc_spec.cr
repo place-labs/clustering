@@ -16,6 +16,7 @@ describe Clustering do
   it "functions" do
     versions = [] of String
     redis_versions = [] of String
+
     # Listen for ready events
     spawn(same_thread: true) do
       Redis.new.subscribe(Clustering.redis_version_channel) do |on|
