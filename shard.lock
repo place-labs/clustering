@@ -30,7 +30,7 @@ shards:
 
   hound-dog:
     github: aca-labs/hound-dog
-    commit: d03b830eef527b44d5f03cdbae4534fb0d3d8f06
+    version: 1.1.4
 
   kilt:
     github: jeromegn/kilt
