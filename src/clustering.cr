@@ -45,7 +45,7 @@ class Clustering
     @etcd_host : String = ENV["ETCD_HOST"]? || "localhost",
     @etcd_port : Int32 = ENV["ETCD_PORT"]?.try(&.to_i?) || 2379,
     @logger : Logger = Logger.new(STDOUT),
-    @redis : Redis = Redis.new(url: ENV["redis_url"]?)
+    @redis : Redis = Redis.new(url: ENV["REDIS_URL"]?)
   )
     @discovery = discovery || HoundDog::Discovery.new(
       service: SERVICE_NAMESPACE,
