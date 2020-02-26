@@ -1,4 +1,3 @@
-require "action-controller/logger"
 require "etcd"
 require "hound-dog"
 require "logger"
