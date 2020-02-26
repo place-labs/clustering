@@ -9,14 +9,12 @@ require "../clustering"
 
 # :nodoc:
 class Node
-  private alias TaggedLogger = ActionController::Logger::TaggedLogger
-
   @num : Int32 = Random.rand(1..65536)
 
   getter name : String
   getter clustering : Clustering
   getter discovery : HoundDog::Discovery
-  getter logger : TaggedLogger
+  getter logger : Logger
   getter stabilize : Array(HoundDog::Service::Node) ->
   delegate stop, leader?, cluster_version, to: clustering
 
@@ -27,9 +25,12 @@ class Node
     name : String? = nil,
     uri : String? = nil,
     @stabilize : Array(HoundDog::Service::Node) -> = ->(_nodes : Array(HoundDog::Service::Node)) {},
-    @logger : TaggedLogger = TaggedLogger.new(ActionController::Base.settings.logger)
+    @logger : Logger = Logger.new(STDOUT, level: Logger::Severity::DEBUG)
   )
-    @logger.level = Logger::Severity::DEBUG
+    @logger.formatter = Logger::Formatter.new do |severity, _, _, message, io|
+      label = severity.unknown? ? "?" : severity.to_s
+      io << label[0] << ": " << message
+    end
 
     @name = name || "#{@num.to_s.rjust(5, '0')}"
     @uri = uri || "https://fake-#{@name}:#{@num}"

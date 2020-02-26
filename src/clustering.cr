@@ -1,4 +1,3 @@
-require "action-controller"
 require "etcd"
 require "hound-dog"
 require "redis"
@@ -6,12 +5,10 @@ require "ulid"
 require "uri"
 
 class Clustering
-  alias TaggedLogger = ActionController::Logger::TaggedLogger
-
   # Performed to align nodes in the cluster
   getter stabilize : (Array(HoundDog::Service::Node) ->)?
 
-  private getter logger : TaggedLogger
+  private getter logger : Logger
 
   class_getter cluster_version_key = CLUSTER_VERSION_KEY
   class_getter election_key = ELECTION_KEY
@@ -47,7 +44,7 @@ class Clustering
     discovery : HoundDog::Discovery? = nil,
     @etcd_host : String = ENV["ETCD_HOST"]? || "localhost",
     @etcd_port : Int32 = ENV["ETCD_PORT"]?.try(&.to_i?) || 2379,
-    @logger : TaggedLogger = TaggedLogger.new(ActionController::Base.settings.logger),
+    @logger : Logger = Logger.new(STDOUT),
     @redis : Redis = Redis.new(url: ENV["redis_url"]?)
   )
     @discovery = discovery || HoundDog::Discovery.new(
@@ -57,17 +54,17 @@ class Clustering
     )
 
     @election_watcher = etcd_client.watch.watch(ELECTION_KEY, filters: [Etcd::Watch::Filter::NOPUT]) do |e|
-      logger.tag_debug(etcd_event: "election", event: e.inspect)
+      logger.debug { "etcd_event=election event=#{e.inspect}" }
       handle_election
     end
 
     @readiness_watcher = etcd_client.watch.watch_prefix(READINESS_KEY) do |e|
-      logger.tag_debug(etcd_event: "ready", event: e.inspect)
+      logger.debug { "etcd_event=ready event=#{e.inspect}" }
       handle_readiness_event
     end
 
     @version_watcher = etcd_client.watch.watch(CLUSTER_VERSION_KEY) do |e|
-      logger.tag_debug(etcd_event: "version", event: e.inspect)
+      logger.debug { "etcd_event=version event=#{e.inspect}" }
       handle_version_change(e)
     end
   end
@@ -147,7 +144,7 @@ class Clustering
     lease_id = discovery.lease_id.as(Int64)
 
     etcd_client.kv.put(CLUSTER_VERSION_KEY, version, lease_id)
-    logger.tag_info(message: "leader set version", cluster_version: version)
+    logger.info { "cluster_version=#{version} message=leader set version" }
   end
 
   # Node stabilization
@@ -173,15 +170,15 @@ class Clustering
   end
 
   private def _stabilize(cluster_version : String, nodes : Array(HoundDog::Service::Node))
-    logger.tag_info(node_event: "stabilizing", cluster_version: cluster_version)
+    logger.info { "node_event=stablizing  cluster_version=#{cluster_version}" }
     stabilize.try &.call(nodes)
     set_ready(cluster_version)
-    logger.tag_info(node_event: "stable", cluster_version: cluster_version)
+    logger.info { "node_event=stable  cluster_version=#{cluster_version}" }
   end
 
   private def set_ready(version : String)
     unless discovery.registered?
-      logger.warn "unregistered cluster node setting readiness"
+      logger.warn { "unregistered cluster node setting readiness" }
       return
     end
 
@@ -197,7 +194,7 @@ class Clustering
   #
   private def handle_election
     unless discovery.registered?
-      logger.warn "unregistered cluster node participating in election"
+      logger.warn { "unregistered cluster node participating in election" }
       return
     end
 
@@ -214,7 +211,7 @@ class Clustering
                 # Attempt to set self as if a leader is not already present
                 etcd.kv.put_not_exists(ELECTION_KEY, uri.to_s, lease_id)
               end
-    logger.tag_info(is_leader: leader?, leader: leader_node)
+    logger.info { "is_leader=#{leader?} leader=#{leader_node}" }
     update_version if leader?
   rescue e
     if watching?
@@ -239,10 +236,10 @@ class Clustering
   #
   def handle_version_change(value)
     version = value.first?.try(&.kv.value) || ""
-    logger.tag_debug(cluster_version: version, is_leader: leader?, message: "received version change")
+    logger.debug { "cluster_version=#{version} is_leader=#{leader?} message=received version change" }
     stabilize_channel.send({discovery.nodes.dup, version})
   rescue e
-    logger.error("While watching cluster version #{e.inspect_with_backtrace}")
+    logger.error { "While watching cluster version #{e.inspect_with_backtrace}" }
   end
 
   # The leader publishes a version to the redis channel if...
@@ -254,7 +251,7 @@ class Clustering
       redis.publish(REDIS_VERSION_CHANNEL, cluster_version)
     end
   rescue e
-    logger.error("While handling readiness event #{e.inspect_with_backtrace}")
+    logger.error { "While handling readiness event #{e.inspect_with_backtrace}" }
   end
 
   getter node_versions = {} of String => String
