@@ -9,7 +9,7 @@ dependencies:
 
   hound-dog:
     github: place-labs/hound-dog
-    version: ~> 2.0
+    branch: master
 
   ulid:
     github: aca-labs/ulid
