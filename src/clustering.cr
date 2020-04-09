@@ -1,6 +1,5 @@
 require "etcd"
 require "hound-dog"
-require "redis"
 require "ulid"
 require "uri"
 
@@ -8,20 +7,18 @@ class Clustering
   # Performed to align nodes in the cluster
   getter stabilize : (Array(HoundDog::Service::Node) ->)?
 
+  # Performed by leader once cluster has stabilized
+  private getter on_stable : (String ->)?
+
   private getter logger : Logger
 
-  class_getter cluster_version_key = CLUSTER_VERSION_KEY
   class_getter election_key = ELECTION_KEY
   class_getter meta_namespace = META_NAMESPACE
   class_getter readiness_key = READINESS_KEY
-  class_getter redis_version_channel = REDIS_VERSION_CHANNEL
   class_getter service_namespace = SERVICE_NAMESPACE
 
   private getter etcd_host : String
   private getter etcd_port : Int32
-
-  # For setting ready state in redis
-  private getter redis : Redis
 
   # Whether node is the cluster leader
   getter? leader : Bool = false
@@ -44,8 +41,7 @@ class Clustering
     discovery : HoundDog::Discovery? = nil,
     @etcd_host : String = ENV["ETCD_HOST"]? || "localhost",
     @etcd_port : Int32 = ENV["ETCD_PORT"]?.try(&.to_i?) || 2379,
-    @logger : Logger = Logger.new(STDOUT),
-    @redis : Redis = Redis.new(url: ENV["REDIS_URL"]?)
+    @logger : Logger = Logger.new(STDOUT)
   )
     @discovery = discovery || HoundDog::Discovery.new(
       service: SERVICE_NAMESPACE,
@@ -76,9 +72,16 @@ class Clustering
   # - version_watcher (version change event consumer)
   # - consume_stabilization_events (created by version_watcher)
   def start
-    discovery.register do
-      cluster_change
+    spawn(same_thread: true) do
+      discovery.register do
+        cluster_change
+      end
     end
+
+    Fiber.yield
+
+    # Ensure the node is registered
+    discovery.registration_channel.receive
 
     spawn(same_thread: true) do
       election_watcher.start
@@ -108,8 +111,9 @@ class Clustering
   # Accepts a block that will be called with cluster nodes
   # during stabilization events
   #
-  def start(&stabilize : Array(HoundDog::Service::Node) ->)
+  def start(on_stable : (String -> Nil)? = nil, &stabilize : Array(HoundDog::Service::Node) ->)
     @stabilize = stabilize
+    @on_stable = on_stable if on_stable
     start
   end
 
@@ -242,13 +246,14 @@ class Clustering
     logger.error { "While watching cluster version #{e.inspect_with_backtrace}" }
   end
 
-  # The leader publishes a version to the redis channel if...
+  # The leader calls the `on_stable` callback if...
   # + cluster's version state is consistent
   # + consistent state has not already been confirmed to be consistent
   def handle_readiness_event
     if leader? && cluster_consistent? && previous_node_versions != node_versions
+      logger.info { "cluster #{cluster_version} is stable" }
       @previous_node_versions = @node_versions.dup
-      redis.publish(REDIS_VERSION_CHANNEL, cluster_version)
+      on_stable.try &.call(cluster_version)
     end
   rescue e
     logger.error { "While handling readiness event #{e.inspect_with_backtrace}" }
@@ -274,12 +279,11 @@ class Clustering
   # Constants
   #############################################################################
 
-  private CLUSTER_VERSION_KEY   = "#{META_NAMESPACE}/cluster_version"
-  private ELECTION_KEY          = "#{META_NAMESPACE}/leader"
-  private META_NAMESPACE        = "cluster"
-  private READINESS_KEY         = "#{META_NAMESPACE}/node_version"
-  private REDIS_VERSION_CHANNEL = "#{META_NAMESPACE}/cluster_version"
-  private SERVICE_NAMESPACE     = "clustering"
+  private CLUSTER_VERSION_KEY = "#{META_NAMESPACE}/cluster_version"
+  private ELECTION_KEY        = "#{META_NAMESPACE}/leader"
+  private META_NAMESPACE      = "cluster"
+  private READINESS_KEY       = "#{META_NAMESPACE}/node_version"
+  private SERVICE_NAMESPACE   = "clustering"
 
   # Helpers
   #############################################################################
