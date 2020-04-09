@@ -3,7 +3,7 @@
 [![Build Status](https://travis-ci.com/aca-labs/clustering.svg?branch=master)](https://travis-ci.com/aca-labs/clustering)
 
 `Clustering` class implements simple clustering logic through etcd as a distributed consistent key-value store.
-Once a cluster has stabilized, a message with the version is published to a redis channel defined by `Clustering.redis_version_channel`.
+A `on_stable` callback is fired for the leader once the cluster has stabilized.
 
 Running `$ shards build` will create a simple proof of concept app, run it with `./bin/poc`
 
@@ -28,5 +28,4 @@ There are 4 etcd watchfeeds
 
 ## Dependencies
 
-- etcd `~> v3.3.13`
-- redis `~> v5`
+- etcd `~> v3.3`

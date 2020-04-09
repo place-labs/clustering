@@ -1,7 +1,6 @@
 require "etcd"
 require "hound-dog"
 require "logger"
-require "redis"
 require "uuid"
 
 require "../clustering"
@@ -15,6 +14,7 @@ class Node
   getter discovery : HoundDog::Discovery
   getter logger : Logger
   getter stabilize : Array(HoundDog::Service::Node) ->
+  getter on_stable : String ->
   delegate stop, leader?, cluster_version, to: clustering
 
   @name : String
@@ -23,6 +23,7 @@ class Node
   def initialize(
     name : String? = nil,
     uri : String? = nil,
+    @on_stable : String -> = ->(_version : String) {},
     @stabilize : Array(HoundDog::Service::Node) -> = ->(_nodes : Array(HoundDog::Service::Node)) {},
     @logger : Logger = Logger.new(STDOUT, level: Logger::Severity::DEBUG)
   )
@@ -44,6 +45,8 @@ class Node
   end
 
   def start
-    clustering.start &stabilize
+    clustering.start(on_stable: @on_stable) do |v|
+      stabilize.call(v)
+    end
   end
 end

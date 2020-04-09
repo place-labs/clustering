@@ -1,5 +1,5 @@
 name: clustering
-version: 0.3.2
+version: 0.3.3
 crystal: 0.33.0
 license: MIT
 
@@ -8,15 +8,12 @@ dependencies:
     github: aca-labs/crystal-etcd
 
   hound-dog:
-    github: aca-labs/hound-dog
-    version: ~>2.0.2
+    github: place-labs/hound-dog
+    version: ~> 2.0
 
   ulid:
     github: aca-labs/ulid
-    version: ~>0.1
-
-  redis:
-    github: stefanwille/crystal-redis
+    version: ~> 0.1
 
 development_dependencies:
   ameba:
