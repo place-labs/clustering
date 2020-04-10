@@ -1,10 +1,10 @@
 name: clustering
-version: 1.0.0
+version: 1.0.1
 license: MIT
 
 dependencies:
   etcd:
-    github: aca-labs/crystal-etcd
+    github: place-labs/crystal-etcd
     version: ~> 1.0
 
   hound-dog:
