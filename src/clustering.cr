@@ -4,13 +4,13 @@ require "ulid"
 require "uri"
 
 class Clustering
+  Log = ::Log.for(self)
+
   # Performed to align nodes in the cluster
   getter stabilize : (Array(HoundDog::Service::Node) ->)?
 
   # Performed by leader once cluster has stabilized
   private getter on_stable : (String ->)?
-
-  private getter logger : Logger
 
   class_getter election_key = ELECTION_KEY
   class_getter meta_namespace = META_NAMESPACE
@@ -40,8 +40,7 @@ class Clustering
     name : String = ULID.generate,
     discovery : HoundDog::Discovery? = nil,
     @etcd_host : String = ENV["ETCD_HOST"]? || "localhost",
-    @etcd_port : Int32 = ENV["ETCD_PORT"]?.try(&.to_i?) || 2379,
-    @logger : Logger = Logger.new(STDOUT)
+    @etcd_port : Int32 = ENV["ETCD_PORT"]?.try(&.to_i?) || 2379
   )
     @discovery = discovery || HoundDog::Discovery.new(
       service: SERVICE_NAMESPACE,
@@ -50,17 +49,17 @@ class Clustering
     )
 
     @election_watcher = etcd_client.watch.watch(ELECTION_KEY, filters: [Etcd::Watch::Filter::NOPUT]) do |e|
-      logger.debug { "etcd_event=election event=#{e.inspect}" }
+      Log.debug { {event: "election", etcd: e.map &.to_s} }
       handle_election
     end
 
     @readiness_watcher = etcd_client.watch.watch_prefix(READINESS_KEY) do |e|
-      logger.debug { "etcd_event=ready event=#{e.inspect}" }
+      Log.debug { {event: "ready", etcd: e.map &.to_s} }
       handle_readiness_event
     end
 
     @version_watcher = etcd_client.watch.watch(CLUSTER_VERSION_KEY) do |e|
-      logger.debug { "etcd_event=version event=#{e.inspect}" }
+      Log.debug { {event: "version", etcd: e.map &.to_s} }
       handle_version_change(e)
     end
   end
@@ -148,7 +147,7 @@ class Clustering
     lease_id = discovery.lease_id.as(Int64)
 
     etcd_client.kv.put(CLUSTER_VERSION_KEY, version, lease_id)
-    logger.info { "cluster_version=#{version} message=leader set version" }
+    Log.info { {version: version, message: "leader set version"} }
   end
 
   # Node stabilization
@@ -168,25 +167,24 @@ class Clustering
       _stabilize(version, nodes)
     end
   rescue e
-    if watching?
-      logger.error { "While consuming stabilization event #{e.inspect_with_backtrace}" }
-    end
+    Log.error(exception: e) { "error while consuming stabilization event" } if watching?
   end
 
   private def _stabilize(cluster_version : String, nodes : Array(HoundDog::Service::Node))
-    logger.info { "node_event=stablizing  cluster_version=#{cluster_version}" }
+    Log.info { {node_event: "stablizing", version: cluster_version} }
     stabilize.try &.call(nodes)
     set_ready(cluster_version)
-    logger.info { "node_event=stable  cluster_version=#{cluster_version}" }
+    Log.info { {node_event: "stable", version: cluster_version} }
   end
 
   private def set_ready(version : String)
     unless discovery.registered?
-      logger.warn { "unregistered cluster node setting readiness" }
+      Log.warn { "unregistered cluster node setting readiness" }
       return
     end
 
     @cluster_version = version
+
     # Set the ready key for this node in etcd
     etcd_client.kv.put(node_ready_key, version, discovery.lease_id.as(Int64))
   end
@@ -198,7 +196,7 @@ class Clustering
   #
   private def handle_election
     unless discovery.registered?
-      logger.warn { "unregistered cluster node participating in election" }
+      Log.warn { "unregistered cluster node participating in election" }
       return
     end
 
@@ -215,11 +213,11 @@ class Clustering
                 # Attempt to set self as if a leader is not already present
                 etcd.kv.put_not_exists(ELECTION_KEY, uri.to_s, lease_id)
               end
-    logger.info { "is_leader=#{leader?} leader=#{leader_node}" }
+    Log.info { {is_leader: leader?, leader: leader_node.to_s} }
     update_version if leader?
   rescue e
     if watching?
-      logger.error { "While participating in election #{e.inspect_with_backtrace}" }
+      Log.error(exception: e) { "error while participating in election" }
     end
   end
 
@@ -232,7 +230,7 @@ class Clustering
     update_version if leader?
   rescue e
     if watching?
-      logger.error { "During cluster change #{e.inspect_with_backtrace}" }
+      Log.error(exception: e) { "Error during cluster change" }
     end
   end
 
@@ -240,10 +238,10 @@ class Clustering
   #
   def handle_version_change(value)
     version = value.first?.try(&.kv.value) || ""
-    logger.debug { "cluster_version=#{version} is_leader=#{leader?} message=received version change" }
+    Log.debug { {is_leader: leader?, version: version, message: "received version change"} }
     stabilize_channel.send({discovery.nodes.dup, version})
   rescue e
-    logger.error { "While watching cluster version #{e.inspect_with_backtrace}" }
+    Log.error(exception: e) { "error while watching cluster version" }
   end
 
   # The leader calls the `on_stable` callback if...
@@ -251,12 +249,12 @@ class Clustering
   # + consistent state has not already been confirmed to be consistent
   def handle_readiness_event
     if leader? && cluster_consistent? && previous_node_versions != node_versions
-      logger.info { "cluster #{cluster_version} is stable" }
+      Log.info { {message: "cluster stable", version: cluster_version} }
       @previous_node_versions = @node_versions.dup
       on_stable.try &.call(cluster_version)
     end
   rescue e
-    logger.error { "While handling readiness event #{e.inspect_with_backtrace}" }
+    Log.error(exception: e) { "error while handling readiness event" }
   end
 
   getter node_versions = {} of String => String
@@ -291,7 +289,7 @@ class Clustering
   # Generate a new Etcd client
   #
   def etcd_client
-    Etcd::Client.new(host: etcd_host, port: etcd_port, logger: logger)
+    Etcd::Client.new(host: etcd_host, port: etcd_port)
   end
 
   private def strip_namespace(key, namespace)
@@ -307,5 +305,12 @@ class Clustering
       readiness_watcher.watching &&
       version_watcher.watching &&
       discovery.registered?
+  end
+end
+
+class Etcd::Model::WatchEvent
+  def to_s(io)
+    io << type.to_s << " " << kv.key
+    io << " " << kv.value.as(String) if kv.value
   end
 end

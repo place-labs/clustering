@@ -1,5 +1,6 @@
 name: clustering
-version: 1.0.2
+version: 2.0.0
+crystal: 0.34.0
 license: MIT
 
 dependencies:
@@ -14,6 +15,9 @@ dependencies:
   ulid:
     github: place-labs/ulid
     version: ~> 0.1
+
+  log_helper:
+    github: spider-gazelle/log_helper
 
 development_dependencies:
   ameba:

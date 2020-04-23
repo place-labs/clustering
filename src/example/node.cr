@@ -1,6 +1,5 @@
 require "etcd"
 require "hound-dog"
-require "logger"
 require "uuid"
 
 require "../clustering"
@@ -12,7 +11,6 @@ class Node
   getter name : String
   getter clustering : Clustering
   getter discovery : HoundDog::Discovery
-  getter logger : Logger
   getter stabilize : Array(HoundDog::Service::Node) ->
   getter on_stable : String ->
   delegate stop, leader?, cluster_version, to: clustering
@@ -24,14 +22,8 @@ class Node
     name : String? = nil,
     uri : String? = nil,
     @on_stable : String -> = ->(_version : String) {},
-    @stabilize : Array(HoundDog::Service::Node) -> = ->(_nodes : Array(HoundDog::Service::Node)) {},
-    @logger : Logger = Logger.new(STDOUT, level: Logger::Severity::DEBUG)
+    @stabilize : Array(HoundDog::Service::Node) -> = ->(_nodes : Array(HoundDog::Service::Node)) {}
   )
-    @logger.formatter = Logger::Formatter.new do |severity, _, _, message, io|
-      label = severity.unknown? ? "?" : severity.to_s
-      io << label[0] << ": " << message
-    end
-
     @name = name || "#{@num.to_s.rjust(5, '0')}"
     @uri = uri || "https://fake-#{@name}:#{@num}"
 
@@ -40,7 +32,6 @@ class Node
       name: @name,
       uri: @uri,
       discovery: @discovery,
-      logger: @logger,
     )
   end
 
