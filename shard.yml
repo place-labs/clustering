@@ -1,6 +1,6 @@
 name: clustering
-version: 2.0.0
-crystal: 0.34.0
+version: 2.0.1
+crystal: ~> 0.35
 license: MIT
 
 dependencies:
@@ -28,4 +28,4 @@ targets:
     main: src/example/main.cr
 
 authors:
-  - Caspian Baska <caspianbaska@gmail.com>
+  - Caspian Baska <caspian@place.tech>
