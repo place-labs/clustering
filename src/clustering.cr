@@ -301,9 +301,9 @@ class Clustering
   end
 
   private def watching?
-    election_watcher.watching &&
-      readiness_watcher.watching &&
-      version_watcher.watching &&
+    election_watcher.watching? &&
+      readiness_watcher.watching? &&
+      version_watcher.watching? &&
       discovery.registered?
   end
 end
