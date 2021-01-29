@@ -6,6 +6,8 @@ require "../clustering"
 
 # :nodoc:
 class Node
+  Log = ::Log.for(self)
+
   @num : Int32 = Random.rand(1..65536)
 
   getter name : String
@@ -33,6 +35,11 @@ class Node
       uri: @uri,
       discovery: @discovery,
     )
+  end
+
+  def tick(n)
+    Log.info { "tick=#{n}, is_leader=#{leader?}, version=#{cluster_version}, nodes=#{discovery.nodes}" }
+    sleep 1
   end
 
   def start
