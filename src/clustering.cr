@@ -239,30 +239,9 @@ class Clustering
   def handle_version_change(value)
     version = value.first?.try(&.kv.value) || ""
     Log.debug { {is_leader: leader?, version: version, message: "received version change"} }
-    stabilize_channel.send({dup(discovery.nodes), version})
+    stabilize_channel.send({discovery.nodes.dup, version})
   rescue e
     Log.error(exception: e) { "error while watching cluster version" }
-  end
-
-  # Unfortunate hack for crystal v0.36.0
-  #################################################################################################
-
-  @[AlwaysInline]
-  private def dup(hash : Hash(K, V)) forall K, V
-    new_hash = Hash(K, V).new
-    hash.each do |k, v|
-      new_hash[k] = v
-    end
-    new_hash
-  end
-
-  @[AlwaysInline]
-  private def dup(ary : Array(V)) forall V
-    new_ary = Array(V).new
-    ary.each do |v|
-      new_ary << v
-    end
-    new_ary
   end
 
   #################################################################################################
@@ -273,7 +252,7 @@ class Clustering
   def handle_readiness_event
     if leader? && cluster_consistent? && previous_node_versions != node_versions
       Log.info { {message: "cluster stable", version: cluster_version} }
-      @previous_node_versions = dup(@node_versions)
+      @previous_node_versions = @node_versions.dup
       on_stable.try &.call(cluster_version)
     end
   rescue e
