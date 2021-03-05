@@ -8,6 +8,7 @@ class Test < Node
   def initialize
     super(on_stable: ->(version : String) { @versions << version }, stabilize: ->(nodes : Array(HoundDog::Service::Node)) {
       @received_nodes << nodes
+      true
     })
   end
 end

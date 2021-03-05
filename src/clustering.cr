@@ -7,7 +7,7 @@ class Clustering
   Log = ::Log.for(self)
 
   # Performed to align nodes in the cluster
-  getter stabilize : (Array(HoundDog::Service::Node) ->)?
+  getter stabilize : (Array(HoundDog::Service::Node) -> Bool)?
 
   # Performed by leader once cluster has stabilized
   private getter on_stable : (String ->)?
@@ -107,10 +107,10 @@ class Clustering
   end
 
   # Like above.
-  # Accepts a block that will be called with cluster nodes
-  # during stabilization events
+  # Accepts a block that will be called with cluster nodes during stabilization events
   #
-  def start(on_stable : (String -> Nil)? = nil, &stabilize : Array(HoundDog::Service::Node) ->)
+  # If stabilize callback is true, the node is marked as ready.
+  def start(on_stable : (String -> Nil)? = nil, &stabilize : Array(HoundDog::Service::Node) -> Bool)
     @stabilize = stabilize
     @on_stable = on_stable if on_stable
     start
@@ -135,7 +135,7 @@ class Clustering
     etcd_client.kv.get(ELECTION_KEY).try do |uri_string|
       uri = URI.parse(uri_string)
       # Look through cluster nodes for that uri
-      nodes.bsearch { |n| n[:uri] == uri }
+      nodes.bsearch &.[:uri].==(uri)
     end
   end
 
@@ -172,9 +172,9 @@ class Clustering
 
   private def _stabilize(cluster_version : String, nodes : Array(HoundDog::Service::Node))
     Log.info { {node_event: "stablizing", version: cluster_version} }
-    stabilize.try &.call(nodes)
-    set_ready(cluster_version)
-    Log.info { {node_event: "stable", version: cluster_version} }
+    ready = stabilize.try &.call(nodes)
+    set_ready(cluster_version) if ready
+    Log.info { {node_event: ready ? "stable" : "failed to stabilize", version: cluster_version} }
   end
 
   private def set_ready(version : String)
@@ -310,9 +310,9 @@ class Clustering
   end
 end
 
-class Etcd::Model::WatchEvent
+struct Etcd::Model::WatchEvent
   def to_s(io)
     io << type.to_s << " " << kv.key
-    io << " " << kv.value.as(String) if kv.value
+    kv.value.try { |v| io << " " << v }
   end
 end

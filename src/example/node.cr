@@ -13,7 +13,7 @@ class Node
   getter name : String
   getter clustering : Clustering
   getter discovery : HoundDog::Discovery
-  getter stabilize : Array(HoundDog::Service::Node) ->
+  getter stabilize : Array(HoundDog::Service::Node) -> Bool
   getter on_stable : String ->
   delegate stop, leader?, cluster_version, to: clustering
 
@@ -24,7 +24,7 @@ class Node
     name : String? = nil,
     uri : String? = nil,
     @on_stable : String -> = ->(_version : String) {},
-    @stabilize : Array(HoundDog::Service::Node) -> = ->(_nodes : Array(HoundDog::Service::Node)) {}
+    @stabilize : Array(HoundDog::Service::Node) -> Bool = ->(_nodes : Array(HoundDog::Service::Node)) { true }
   )
     @name = name || "#{@num.to_s.rjust(5, '0')}"
     @uri = uri || "https://fake-#{@name}:#{@num}"
