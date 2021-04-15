@@ -2,6 +2,7 @@ require "etcd"
 require "hound-dog"
 require "ulid"
 require "uri"
+require "mutex"
 
 class Clustering
   Log = ::Log.for(self)
@@ -132,7 +133,7 @@ class Clustering
   #
   def leader_node
     # Find the uri of the node who is the leader
-    etcd_client.kv.get(ELECTION_KEY).try do |uri_string|
+    discovery.etcd &.kv.get(ELECTION_KEY).try do |uri_string|
       uri = URI.parse(uri_string)
       # Look through cluster nodes for that uri
       nodes.bsearch &.[:uri].==(uri)
@@ -146,7 +147,7 @@ class Clustering
     version = ULID.generate
     lease_id = discovery.lease_id.as(Int64)
 
-    etcd_client.kv.put(CLUSTER_VERSION_KEY, version, lease_id)
+    discovery.etcd &.kv.put(CLUSTER_VERSION_KEY, version, lease_id)
     Log.info { {version: version, message: "leader set version"} }
   end
 
@@ -177,20 +178,27 @@ class Clustering
     Log.info { {node_event: ready ? "stable" : "failed to stabilize", version: cluster_version} }
   end
 
+  private getter ready_lock = Mutex.new
+
   private def set_ready(version : String)
     unless discovery.registered?
       Log.warn { "unregistered cluster node setting readiness" }
       return
     end
 
-    @cluster_version = version
+    ready_lock.synchronize do
+      @previous_cluster_version = cluster_version
+      @cluster_version = version
 
-    # Set the ready key for this node in etcd
-    etcd_client.kv.put(node_ready_key, version, discovery.lease_id.as(Int64))
+      # Set the ready key for this node in etcd
+      discovery.etcd &.kv.put(node_ready_key, version, discovery.lease_id.as(Int64))
+    end
   end
 
   # Election
   #############################################################################
+
+  private getter election_lock = Mutex.new
 
   # Try to acquire the leader role
   #
@@ -200,21 +208,23 @@ class Clustering
       return
     end
 
-    etcd = etcd_client
-    lease_id = discovery.lease_id.as(Int64)
+    election_lock.synchronize do
+      lease_id = discovery.lease_id.as(Int64)
+      kv = discovery.etcd(&.kv.range(ELECTION_KEY).kvs).first?
 
-    # Determine leader status
-    @leader = if (kv = etcd.kv.range(ELECTION_KEY).kvs.first?)
-                leader_uri = URI.parse(kv.value.as(String))
+      # Determine leader status
+      @leader = if kv
+                  leader_uri = URI.parse(kv.value.as(String))
 
-                # Check if it is the same as the current node
-                uri == leader_uri && lease_id == kv.lease
-              else
-                # Attempt to set self as if a leader is not already present
-                etcd.kv.put_not_exists(ELECTION_KEY, uri.to_s, lease_id)
-              end
-    Log.info { {is_leader: leader?, leader: leader_node.to_s} }
-    update_version if leader?
+                  # Check if it is the same as the current node
+                  uri == leader_uri && lease_id == kv.lease
+                else
+                  # Attempt to set self as if a leader is not already present
+                  discovery.etcd(&.kv.put_not_exists(ELECTION_KEY, uri.to_s, lease_id))
+                end
+      Log.info { {is_leader: leader?, leader: leader_node.to_s} }
+      update_version if leader?
+    end
   rescue e
     if watching?
       Log.error(exception: e) { "error while participating in election" }
@@ -230,7 +240,7 @@ class Clustering
     update_version if leader?
   rescue e
     if watching?
-      Log.error(exception: e) { "Error during cluster change" }
+      Log.error(exception: e) { "error during cluster change" }
     end
   end
 
@@ -246,14 +256,22 @@ class Clustering
 
   #################################################################################################
 
+  private getter stable_lock = Mutex.new
+
   # The leader calls the `on_stable` callback if...
   # + cluster's version state is consistent
   # + consistent state has not already been confirmed to be consistent
   def handle_readiness_event
-    if leader? && cluster_consistent? && previous_node_versions != node_versions
-      Log.info { {message: "cluster stable", version: cluster_version} }
-      @previous_node_versions = @node_versions.dup
-      on_stable.try &.call(cluster_version)
+    stable_lock.synchronize do
+      # Ignore stale readiness events
+      return if previous_cluster_version.presence && previous_cluster_version >= cluster_version
+
+      if leader? && cluster_consistent? && previous_node_versions != node_versions
+        Log.info { {message: "cluster stable", version: cluster_version} }
+        @previous_node_versions = @node_versions.dup
+        pp! previous_cluster_version
+        on_stable.try &.call(cluster_version)
+      end
     end
   rescue e
     Log.error(exception: e) { "error while handling readiness event" }
@@ -261,12 +279,13 @@ class Clustering
 
   getter node_versions = {} of String => String
   private getter previous_node_versions = {} of String => String
+  private getter previous_cluster_version : String = ""
 
   # When there's an event under the readiness namespace, node creates a hash from node to version.
   # If all the nodes are at the same version, the cluster is consistent.
   def cluster_consistent?
     # Get values under the "readiness key"
-    @node_versions = etcd_client.kv.range_prefix(READINESS_KEY).kvs.reduce({} of String => String) do |ready, kv|
+    @node_versions = discovery.etcd(&.kv.range_prefix(READINESS_KEY).kvs).reduce({} of String => String) do |ready, kv|
       if value = kv.value
         ready[strip_namespace(kv.key, READINESS_KEY)] = value
       end

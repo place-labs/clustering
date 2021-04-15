@@ -59,17 +59,21 @@ describe Clustering do
 
     # Ensure ascending versions
     test_node_1.versions.each_cons_pair do |v1, v2|
-      v1.should be < v2
+      v1.should be <= v2
     end
 
     # Ensure correct versions on nodes
-    (test_node_1.cluster_version == test_node_2.cluster_version == test_node_3.cluster_version == test_node_4.cluster_version).should be_true
+    {test_node_2, test_node_3, test_node_4}.map(&.cluster_version).all?(test_node_1.cluster_version).should be_true
+
+    test_node_1.leader?.should be_true
+
+    sleep 0.1
 
     # Check last published version matches cluster version
     test_node_1.versions.last.should eq test_node_1.cluster_version
 
     # Check for a consistent version history
-    test_node_1.versions.should eq versions
+    test_node_1.versions.uniq.should eq versions
 
     # Check removing a node, removes from all members
     test_node_3.stop
