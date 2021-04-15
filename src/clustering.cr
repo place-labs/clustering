@@ -145,9 +145,16 @@ class Clustering
   # - There is a change in the number of nodes in a cluster
   private def update_version
     version = ULID.generate
-    lease_id = discovery.lease_id.as(Int64)
-
-    discovery.etcd &.kv.put(CLUSTER_VERSION_KEY, version, lease_id)
+    Retriable.retry(
+      base_interval: 1.milliseconds,
+      randomise: 10.milliseconds,
+      max_interval: 1.seconds,
+      max_elapsed_time: HoundDog.settings.etcd_ttl.seconds,
+      on: {Etcd::ApiError => /requested lease not found/}
+    ) do
+      lease_id = discovery.lease_id.as(Int64)
+      discovery.etcd &.kv.put(CLUSTER_VERSION_KEY, version, lease_id)
+    end
     Log.info { {version: version, message: "leader set version"} }
   end
 
