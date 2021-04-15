@@ -145,15 +145,8 @@ class Clustering
   # - There is a change in the number of nodes in a cluster
   private def update_version
     version = ULID.generate
-    Retriable.retry(
-      base_interval: 1.milliseconds,
-      randomise: 10.milliseconds,
-      max_interval: 1.seconds,
-      max_elapsed_time: HoundDog.settings.etcd_ttl.seconds,
-      on: {Etcd::ApiError => /requested lease not found/}
-    ) do
-      lease_id = discovery.lease_id.as(Int64)
-      discovery.etcd &.kv.put(CLUSTER_VERSION_KEY, version, lease_id)
+    retry_on_missing_lease do |id|
+      discovery.etcd &.kv.put(CLUSTER_VERSION_KEY, version, id)
     end
     Log.info { {version: version, message: "leader set version"} }
   end
@@ -197,8 +190,10 @@ class Clustering
       @previous_cluster_version = cluster_version
       @cluster_version = version
 
-      # Set the ready key for this node in etcd
-      discovery.etcd &.kv.put(node_ready_key, version, discovery.lease_id.as(Int64))
+      retry_on_missing_lease do |id|
+        # Set the ready key for this node in etcd
+        discovery.etcd &.kv.put(node_ready_key, version, id)
+      end
     end
   end
 
@@ -227,7 +222,10 @@ class Clustering
                   uri == leader_uri && lease_id == kv.lease
                 else
                   # Attempt to set self as if a leader is not already present
-                  discovery.etcd(&.kv.put_not_exists(ELECTION_KEY, uri.to_s, lease_id))
+                  value = uri.to_s
+                  retry_on_missing_lease do |id|
+                    discovery.etcd(&.kv.put_not_exists(ELECTION_KEY, value, id))
+                  end
                 end
       Log.info { {is_leader: leader?, leader: leader_node.to_s} }
       update_version if leader?
@@ -312,6 +310,20 @@ class Clustering
 
   # Helpers
   #############################################################################
+
+  # Retry a query if a lease is missing for at most the maximum requested lease TTL
+  #
+  def retry_on_missing_lease
+    Retriable.retry(
+      base_interval: 1.milliseconds,
+      randomise: 10.milliseconds,
+      max_interval: 1.seconds,
+      max_elapsed_time: HoundDog.settings.etcd_ttl.seconds,
+      on: {Etcd::ApiError => /requested lease not found/}
+    ) do
+      yield discovery.lease_id.as(Int64)
+    end
+  end
 
   # Generate a new Etcd client
   #
