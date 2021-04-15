@@ -164,7 +164,7 @@ class Clustering
       message = stabilize_channel.receive?
       break unless message
       nodes, version = message
-      next if !version.empty? && version < cluster_version
+      next if version.presence && cluster_version.presence && version <= cluster_version
       _stabilize(version, nodes)
     end
   rescue e
