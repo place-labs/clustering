@@ -1,21 +1,18 @@
 language: crystal
-os: linux
 
 before_install:
-  # Add etcd 3.3.13
-  - docker run --net="host" -p "2379:2379" -p "2380:2380" -e ALLOW_NONE_AUTHENTICATION=yes -d bitnami/etcd:3.3.13
+  - docker run -p "2379:2379" -p "2380:2380" -e ALLOW_NONE_AUTHENTICATION=yes -d bitnami/etcd:3
 
 services:
   - docker
-  - redis
 
 install:
-  - shards install
+  - shards install --ignore-crystal-version
 
 script:
-  # Specs
-  - crystal spec --no-debug --error-trace
   # Linter
   - bin/ameba
   # Formatter
   - crystal tool format --check
+  # Specs
+  - crystal spec --no-debug --error-trace
