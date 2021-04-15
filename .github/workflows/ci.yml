@@ -2,9 +2,10 @@ name: CI
 on: [push, pull_request, workflow_dispatch]
 jobs:
   test:
-    fail-fast: false
-    matrix:
-      include:
+    strategy: 
+      fail-fast: false
+      matrix:
+        include:
           - {os: ubuntu-latest, crystal: latest}
           - {os: ubuntu-latest, crystal: nightly}
           - {os: ubuntu-latest, crystal: 0.36.1}
