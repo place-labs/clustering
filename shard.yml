@@ -16,6 +16,7 @@ dependencies:
 
   hound-dog:
     github: place-labs/hound-dog
+    branch: fix/retries
     version: ~> 2.6
 
   ulid:
