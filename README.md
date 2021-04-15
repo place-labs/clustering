@@ -1,6 +1,6 @@
 # clustering
 
-[![Build Status](https://travis-ci.com/place-labs/clustering.svg?branch=master)](https://travis-ci.com/place-labs/clustering)
+[![CI](https://github.com/place-labs/clustering/actions/workflows/ci.yml/badge.svg)](https://github.com/place-labs/clustering/actions/workflows/ci.yml)
 
 `Clustering` class implements simple clustering logic through etcd as a distributed consistent key-value store.
 A `on_stable` callback is fired for the leader once the cluster has stabilized.
