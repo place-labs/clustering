@@ -171,7 +171,7 @@ class Clustering
       message = stabilize_channel.receive?
       break unless message
       nodes, version = message
-      next if version.presence && cluster_version.presence && version <= cluster_version
+      next if cluster_version.presence && version <= cluster_version
       _stabilize(version, nodes)
     end
   rescue e
@@ -271,12 +271,11 @@ class Clustering
   def handle_readiness_event
     stable_lock.synchronize do
       # Ignore stale readiness events
-      return if previous_cluster_version.presence && previous_cluster_version >= cluster_version
+      return if previous_cluster_version >= cluster_version
 
       if leader? && cluster_consistent? && previous_node_versions != node_versions
         Log.info { {message: "cluster stable", version: cluster_version} }
         @previous_node_versions = @node_versions.dup
-        pp! previous_cluster_version
         on_stable.try &.call(cluster_version)
       end
     end
