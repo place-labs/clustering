@@ -2,30 +2,72 @@
 
 [![CI](https://github.com/place-labs/clustering/actions/workflows/ci.yml/badge.svg)](https://github.com/place-labs/clustering/actions/workflows/ci.yml)
 
-`Clustering` class implements simple clustering logic through etcd as a distributed consistent key-value store.
-A `on_stable` callback is fired for the leader once the cluster has stabilized.
+`Clustering` provides a generic interface for implementing different clustering backends
 
-Running `$ shards build` will create a simple proof of concept app, run it with `./bin/poc`
 
-## Usage
+## Concepts
 
-The `stabilize : Array(NamedTuple(ip: String, port: Int32)) -> Void` arg of `Clustering` defines the class's stabilization logic that is fired upon cluster join, leave, and election events.
-The array of node data is all of the nodes in the cluster.
+When dealing with a cluster you may want to know:
 
-## Implementation
+1. list of nodes in the cluster
+2. when the list of nodes changes, your application might need to
+   - know which node in the cluster is the leader (not all nodes are equal)
+   - rebalance the cluster / redistribute work or data between the nodes
+   - know when the cluster has stabilised after a rebalance has occurred
 
-A single etcd lease is granted per node so if a node drops out of the cluster,
-all associated key/values will expire from the cluster.
+Clustering provides a simple interface for obtaining this information.
 
-### Watchfeeds
 
-There are 4 etcd watchfeeds
+## Example
 
-- election: notify nodes still in cluster that there is no longer a leader
-- readiness: propagate readiness against a cluster version
-- version: set by leader when there's a change in cluster state, nodes must 'ready' themselves to this signal
-- discovery: keeps track of nodes in etcd under a service namespace
+Using the example implementation in spec folder
 
-## Dependencies
+```crystal
+require "clustering"
 
-- etcd `~> v3.3`
+# configure the service that this node is a member of
+cluster = ClusteringExample.new("service_name", URI.parse "http://this_node/service")
+
+# implement the callbacks
+cluster.on_rebalance do |nodes, rebalance_complete_cb|
+  # perform rebalance operations here or update internal state with the list of nodes
+
+  # `nodes` is a https://github.com/caspiano/rendezvous-hash which is an ideal
+  # method for determining what should be running or stored on each node
+
+  # notify the cluster once rebalance is complete
+  rebalance_complete_cb.call
+end
+
+cluster.on_cluster_stable do
+  # this callback is only fired on the leader node
+  # the leader can now perform house keeping operations against a stable cluster
+end
+
+# register this node with the cluster
+cluster.register
+
+```
+
+If you have code only interested in getting the list of nodes in a cluster,
+versus actually joining a cluster, you can use the `Discovery` class
+
+```crystal
+require "clustering"
+
+lookup = Clustering::Discovery.new ClusteringExample.new("service_name")
+lookup.nodes
+
+```
+
+The main purpose of this class is to cache results for a period of time so as
+not to overload your clustering service (etcd / zookeeper etc) and to not slow
+down operations by requiring a fetch every time
+
+Your clustering service might support monitoring too, which means it's storing
+the latest known state and polling is not required
+
+
+## Implementations
+
+* [redis](https://github.com/place-labs/redis_service_manager)

@@ -1,90 +1,86 @@
 require "./helper"
-require "hound-dog"
-require "mutex"
-
-class Test < Node
-  getter received_nodes = [] of Array(HoundDog::Service::Node)
-  getter versions = [] of String
-
-  @lock0 = Mutex.new
-  @lock1 = Mutex.new
-
-  def add_version(version)
-    @lock0.synchronize { versions << version }
-  end
-
-  def add_nodes(nodes)
-    @lock1.synchronize { received_nodes << nodes }
-    true
-  end
-
-  def initialize
-    super(on_stable: ->(version : String) { add_version(version) }, stabilize: ->(nodes : Array(HoundDog::Service::Node)) { add_nodes(nodes) })
-  end
-end
 
 describe Clustering do
-  it "functions" do
-    versions = [] of String
+  channel = Channel(Nil).new
+  Spec.before_each { channel = Channel(Nil).new }
 
-    test_node_1 = Test.new
-    test_node_1.start
-    sleep 0.1
-    test_node_1.leader?.should be_true
-    versions << test_node_1.cluster_version
+  it "should join a cluster of one" do
+    rebalanced_called = false
 
-    test_node_2 = Test.new
-    test_node_2.start
-    sleep 0.1
-    test_node_2.leader?.should be_false
-    versions << test_node_2.cluster_version
-
-    test_node_3 = Test.new
-    test_node_3.start
-    sleep 0.1
-    test_node_3.leader?.should be_false
-    versions << test_node_3.cluster_version
-
-    test_node_4 = Test.new
-    test_node_4.start
-    sleep 0.1
-    test_node_4.leader?.should be_false
-    versions << test_node_4.cluster_version
-
-    # Ensure correct amount of cluster changes
-    test_node_1.received_nodes.size.should eq 4
-    test_node_2.received_nodes.size.should eq 3
-    test_node_3.received_nodes.size.should eq 2
-    test_node_4.received_nodes.size.should eq 1
-
-    # Ensure ascending versions
-    test_node_1.versions.each_cons_pair do |v1, v2|
-      v1.should be <= v2
+    node1 = ClusteringExample.new("service_name", URI.parse "http://node1/service")
+    node1.on_rebalance do |_nodes, rebalance_complete_cb|
+      rebalanced_called = true
+      rebalance_complete_cb.call
     end
+    node1.on_cluster_stable { channel.send(nil) }
 
-    # Ensure correct versions on nodes
-    {test_node_2, test_node_3, test_node_4}.map(&.cluster_version).all?(test_node_1.cluster_version).should be_true
+    node1.leader?.should be_false
+    node1.watching?.should be_false
+    node1.registered?.should be_false
+    rebalanced_called.should be_false
+    node1.nodes.nodes.size.should eq 0
 
-    test_node_1.leader?.should be_true
+    node1.register
 
-    sleep 0.1
+    node1.watching?.should be_true
+    node1.registered?.should be_true
 
-    # Check last published version matches cluster version
-    test_node_1.versions.last.should eq test_node_1.cluster_version
+    rebalanced_called.should be_false
+    node1.leader?.should be_false
+    node1.nodes.nodes.size.should eq 0
 
-    # Check for a consistent version history
-    test_node_1.versions.uniq.should eq versions
+    # wait for cluster stablaisation
+    channel.receive?
 
-    # Check removing a node, removes from all members
-    test_node_3.stop
-    sleep 0.1
+    node1.leader?.should be_true
+    node1.watching?.should be_true
+    node1.registered?.should be_true
+    rebalanced_called.should be_true
+    node1.nodes.nodes.size.should eq 1
 
-    test_node_1.discovery.nodes.size.should eq 3
-    test_node_2.discovery.nodes.size.should eq 3
-    test_node_3.discovery.nodes.size.should eq 3
+    node1.unregister
 
-    test_node_1.stop
-    test_node_2.stop
-    test_node_3.stop
+    node1.leader?.should be_false
+    node1.watching?.should be_false
+    node1.registered?.should be_false
+    node1.nodes.nodes.size.should eq 0
+  end
+
+  it "should join a cluster of one and then rebalance when a new node joins" do
+    node1 = ClusteringExample.new("service_name", URI.parse "http://node1/service")
+    node1.on_rebalance { |_nodes, rebalance_complete_cb| rebalance_complete_cb.call }
+    node1.on_cluster_stable { channel.send(nil) }
+    node1.register
+
+    # wait for cluster stablaisation
+    channel.receive?
+    node1.nodes.nodes.size.should eq 1
+    node1.leader?.should be_true
+
+    node2 = ClusteringExample.new("service_name", URI.parse "http://node2/service")
+    node2.on_rebalance { |_nodes, rebalance_complete_cb| rebalance_complete_cb.call }
+    node2.on_cluster_stable { channel.send(nil) }
+    node2.register
+
+    # wait for cluster stablaisation (only the leader will receive this event)
+    channel.receive?
+    node1.nodes.nodes.size.should eq 2
+    node2.nodes.nodes.size.should eq 2
+    node1.leader?.should be_true
+    node2.leader?.should be_false
+
+    node2.unregister
+
+    # wait for cluster stablaisation
+    channel.receive?
+
+    node1.nodes.nodes.size.should eq 1
+    node2.nodes.nodes.size.should eq 1
+    node1.leader?.should be_true
+
+    node1.unregister
+
+    node1.nodes.nodes.size.should eq 0
+    node2.nodes.nodes.size.should eq 0
   end
 end
