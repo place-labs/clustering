@@ -2,21 +2,24 @@ name: CI
 on: [push, pull_request, workflow_dispatch]
 jobs:
   test:
-    strategy: 
+    strategy:
       fail-fast: false
       matrix:
         include:
           - {os: ubuntu-latest, crystal: latest}
           - {os: ubuntu-latest, crystal: nightly}
-          - {os: ubuntu-latest, crystal: 0.36.1}
+          - {os: ubuntu-latest, crystal: 1.0.0}
     runs-on: ${{matrix.os}}
     steps:
-      - name: Run etcd
-        run: docker run -p "2379:2379" -p "2380:2380" -e ALLOW_NONE_AUTHENTICATION=yes -d bitnami/etcd:3
       - uses: oprypin/install-crystal@v1
         with:
           crystal: ${{matrix.crystal}}
       - uses: actions/checkout@v2
-      - run: shards install --ignore-crystal-version
-      - run: crystal spec
-      - run: crystal tool format --check
+      - name: Install dependencies
+        run: shards install --ignore-crystal-version
+      - name: Lint
+        run: ./bin/ameba
+      - name: Format
+        run: crystal tool format --check
+      - name: Run tests
+        run: crystal spec --error-trace -v
